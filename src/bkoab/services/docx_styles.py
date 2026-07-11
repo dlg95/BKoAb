@@ -1,0 +1,92 @@
+from decimal import Decimal
+
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Pt, RGBColor
+
+
+def format_eur(value: Decimal | float) -> str:
+    amount = Decimal(str(value)).quantize(Decimal("0.01"))
+    formatted = f"{amount:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{formatted} €"
+
+
+def add_styled_paragraph(
+    doc,
+    text: str,
+    *,
+    bold: bool = False,
+    size: int = 10,
+    align: int | None = None,
+):
+    p = doc.add_paragraph()
+    if align is not None:
+        p.alignment = align
+    run = p.add_run(text)
+    run.bold = bold
+    run.font.size = Pt(size)
+    run.font.name = "Calibri"
+    return p
+
+
+def add_money_paragraph(
+    doc,
+    label: str,
+    amount: Decimal | float,
+    *,
+    bold: bool = False,
+    size: int = 10,
+):
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    run_label = p.add_run(f"{label}: ")
+    run_label.bold = bold
+    run_label.font.size = Pt(size)
+    run_label.font.name = "Calibri"
+    run_amount = p.add_run(format_eur(amount))
+    run_amount.bold = bold
+    run_amount.font.size = Pt(size)
+    run_amount.font.name = "Calibri"
+    return p
+
+
+def _set_cell_shading(cell, fill: str):
+    tc_pr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:fill"), fill)
+    tc_pr.append(shd)
+
+
+def set_cell_text(
+    cell,
+    text: str,
+    *,
+    bold: bool = False,
+    size: int = 9,
+    align_right: bool = False,
+    shade: bool = False,
+):
+    cell.text = ""
+    p = cell.paragraphs[0]
+    if align_right:
+        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    run = p.add_run(text)
+    run.bold = bold
+    run.font.size = Pt(size)
+    run.font.name = "Calibri"
+    if shade:
+        _set_cell_shading(cell, "F2F2F2")
+
+
+def set_table_borders(table):
+    tbl = table._tbl
+    tbl_pr = tbl.tblPr
+    borders = OxmlElement("w:tblBorders")
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        element = OxmlElement(f"w:{edge}")
+        element.set(qn("w:val"), "single")
+        element.set(qn("w:sz"), "4")
+        element.set(qn("w:color"), "CCCCCC")
+        borders.append(element)
+    tbl_pr.append(borders)
