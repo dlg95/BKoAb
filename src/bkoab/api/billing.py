@@ -164,6 +164,8 @@ def get_advance_payments(apartment_id: int, year: int, db: Session = Depends(get
     rows = []
     for lease in leases:
         occupied = occupied_months_in_year(lease.move_in, lease.move_out, year)
+        if not occupied:
+            continue
         months = {m: payments.get((lease.id, m), Decimal("0")) for m in range(1, 13)}
         rows.append(
             AdvancePaymentMatrixRow(

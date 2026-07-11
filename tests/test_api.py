@@ -162,3 +162,21 @@ def test_advance_payments_occupied_months(client):
         json={"payments": [{"lease_id": lease_id, "month": 1, "amount": "10"}]},
     )
     assert rejected.status_code == 400
+
+    outside = client.post(
+        "/api/apartments/1/leases",
+        json={
+            "tenant_name": "Clara",
+            "tenant_contact": "",
+            "room_id": 2,
+            "persons": 1,
+            "move_in": "2026-01-01",
+            "move_out": None,
+        },
+    )
+    assert outside.status_code == 201
+    outside_lease_id = outside.json()["id"]
+
+    rows = client.get("/api/apartments/1/billing-years/2025/advance-payments").json()
+    lease_ids = [item["lease_id"] for item in rows]
+    assert outside_lease_id not in lease_ids
