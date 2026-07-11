@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query"
 import { Plus } from "lucide-react"
 
+import { BillingYearsCard } from "@/components/billing-years-card"
 import { LinkButton } from "@/components/link-button"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { api } from "@/lib/api"
 
 export function DashboardPage() {
@@ -24,43 +24,12 @@ export function DashboardPage() {
         </LinkButton>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4">
         {data?.apartments.map((apt) => (
-          <Card key={apt.id}>
-            <CardHeader>
-              <CardTitle>{apt.name}</CardTitle>
-              <CardDescription>
-                {apt.room_count} Zimmer · {apt.active_lease_count} aktive Mietverträge
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap gap-2">
-                {apt.billing_years.length === 0 ? (
-                  <Badge variant="secondary">Noch keine Abrechnung</Badge>
-                ) : (
-                  apt.billing_years.map((year) => (
-                    <LinkButton key={year} variant="outline" size="sm" to={`/wohnungen/${apt.id}/abrechnung/${year}`}>
-                      Abrechnung {year}
-                    </LinkButton>
-                  ))
-                )}
-                <LinkButton size="sm" to={`/wohnungen/${apt.id}/abrechnung/${new Date().getFullYear() - 1}`}>
-                  Abrechnung {new Date().getFullYear() - 1}
-                </LinkButton>
-              </div>
-              <div className="flex gap-2">
-                <LinkButton variant="secondary" size="sm" to={`/wohnungen/${apt.id}`}>
-                  Details
-                </LinkButton>
-                <LinkButton variant="secondary" size="sm" to={`/wohnungen/${apt.id}/mietparteien`}>
-                  Mietparteien
-                </LinkButton>
-              </div>
-            </CardContent>
-          </Card>
+          <BillingYearsCard key={apt.id} apartmentId={apt.id} apartmentName={apt.name} />
         ))}
         {data?.apartments.length === 0 && (
-          <Card className="md:col-span-2">
+          <Card>
             <CardContent className="py-10 text-center text-muted-foreground">
               Noch keine Wohnungen angelegt.
             </CardContent>

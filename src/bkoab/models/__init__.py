@@ -97,9 +97,24 @@ class Lease(Base):
 
     tenant: Mapped["Tenant"] = relationship(back_populates="leases")
     room: Mapped["Room"] = relationship(back_populates="leases")
+    person_periods: Mapped[list["LeasePersonPeriod"]] = relationship(
+        back_populates="lease", cascade="all, delete-orphan", order_by="LeasePersonPeriod.valid_from"
+    )
     advance_payments: Mapped[list["AdvancePayment"]] = relationship(
         back_populates="lease", cascade="all, delete-orphan"
     )
+
+
+class LeasePersonPeriod(Base):
+    __tablename__ = "lease_person_periods"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lease_id: Mapped[int] = mapped_column(ForeignKey("leases.id", ondelete="CASCADE"))
+    valid_from: Mapped[date] = mapped_column(Date)
+    valid_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    persons: Mapped[int] = mapped_column(Integer, default=1)
+
+    lease: Mapped["Lease"] = relationship(back_populates="person_periods")
 
 
 class BillingYear(Base):

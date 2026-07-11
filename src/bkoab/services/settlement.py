@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from bkoab.models import AdvancePayment, Apartment, BillingYear, Invoice, Lease, Room, Tenant
 from bkoab.schemas import (
@@ -12,7 +12,8 @@ from bkoab.schemas import (
     PartySettlement,
     SettlementPreview,
 )
-from bkoab.services.allocation import LeasePeriod, compute_head_months
+from bkoab.services.allocation import compute_head_months
+from bkoab.services.person_periods import ensure_default_person_periods, lease_to_allocation_period
 from bkoab.services.proration import prorate_amount
 
 
@@ -45,10 +46,7 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
         .first()
     )
     if not billing_year:
-        billing_year = BillingYear(apartment_id=apartment_id, year=year)
-        db.add(billing_year)
-        db.commit()
-        db.refresh(billing_year)
+        raise ValueError(f"Abrechnung für {year} ist nicht angelegt")
 
     rooms = db.query(Room).filter(Room.apartment_id == apartment_id).all()
     room_ids = [room.id for room in rooms]
@@ -57,23 +55,15 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
         db.query(Lease)
         .join(Tenant)
         .join(Room)
+        .options(joinedload(Lease.tenant), joinedload(Lease.room), joinedload(Lease.person_periods))
         .filter(Room.apartment_id == apartment_id)
         .all()
     )
 
-    lease_periods: list[LeasePeriod] = []
+    lease_periods = []
     for lease in leases_db:
-        lease_periods.append(
-            LeasePeriod(
-                lease_id=lease.id,
-                tenant_name=lease.tenant.name,
-                room_id=lease.room_id,
-                room_name=lease.room.name,
-                persons=lease.persons,
-                move_in=lease.move_in,
-                move_out=lease.move_out,
-            )
-        )
+        ensure_default_person_periods(lease, db)
+        lease_periods.append(lease_to_allocation_period(lease))
 
     party_head_months, landlord_vacancy, total_head_months = compute_head_months(
         lease_periods, room_ids, year

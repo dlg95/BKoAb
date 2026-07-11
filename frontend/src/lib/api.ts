@@ -33,6 +33,12 @@ export type Lease = {
   persons: number
   move_in: string
   move_out: string | null
+  person_periods: {
+    id: number
+    valid_from: string
+    valid_to: string | null
+    persons: number
+  }[]
 }
 
 export type Invoice = {
@@ -98,10 +104,34 @@ export const api = {
   createApartment: (data: object) => request<Apartment>("/apartments", { method: "POST", body: JSON.stringify(data) }),
   getApartment: (id: number) => request<Apartment>(`/apartments/${id}`),
   updateApartment: (id: number, data: object) => request<Apartment>(`/apartments/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  addRoom: (apartmentId: number, name: string) =>
+    request<{ id: number; name: string }>(`/apartments/${apartmentId}/rooms`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  deleteRoom: (roomId: number) => request<void>(`/rooms/${roomId}`, { method: "DELETE" }),
   deleteApartment: (id: number) => request<void>(`/apartments/${id}`, { method: "DELETE" }),
   leases: (apartmentId: number) => request<Lease[]>(`/apartments/${apartmentId}/leases`),
   createLease: (apartmentId: number, data: object) => request<Lease>(`/apartments/${apartmentId}/leases`, { method: "POST", body: JSON.stringify(data) }),
   deleteLease: (id: number) => request<void>(`/leases/${id}`, { method: "DELETE" }),
+  updatePersonPeriods: (leaseId: number, periods: object[]) =>
+    request<Lease["person_periods"]>(`/leases/${leaseId}/person-periods`, {
+      method: "PUT",
+      body: JSON.stringify({ periods }),
+    }),
+  billingYears: (apartmentId: number) =>
+    request<{ id: number; apartment_id: number; year: number; status: string }[]>(
+      `/apartments/${apartmentId}/billing-years`,
+    ),
+  createBillingYear: (apartmentId: number, year: number) =>
+    request<{ id: number; apartment_id: number; year: number; status: string }>(
+      `/apartments/${apartmentId}/billing-years`,
+      { method: "POST", body: JSON.stringify({ year }) },
+    ),
+  getBillingYear: (apartmentId: number, year: number) =>
+    request<{ id: number; apartment_id: number; year: number; status: string }>(
+      `/apartments/${apartmentId}/billing-years/${year}`,
+    ),
   invoices: (apartmentId: number, year: number) => request<Invoice[]>(`/apartments/${apartmentId}/billing-years/${year}/invoices`),
   createInvoice: (apartmentId: number, year: number, data: object) => request<Invoice>(`/apartments/${apartmentId}/billing-years/${year}/invoices`, { method: "POST", body: JSON.stringify(data) }),
   deleteInvoice: (id: number) => request<void>(`/invoices/${id}`, { method: "DELETE" }),

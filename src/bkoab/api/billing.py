@@ -11,6 +11,7 @@ from bkoab.schemas import (
     INVOICE_TYPE_LABELS,
     AdvancePaymentBulkUpdate,
     AdvancePaymentMatrixRow,
+    BillingYearCreate,
     BillingYearRead,
     InvoiceCreate,
     InvoiceRead,
@@ -24,11 +25,7 @@ router = APIRouter(prefix="/api", tags=["billing"])
 
 
 def _get_or_create_billing_year(db: Session, apartment_id: int, year: int) -> BillingYear:
-    billing_year = (
-        db.query(BillingYear)
-        .filter(BillingYear.apartment_id == apartment_id, BillingYear.year == year)
-        .first()
-    )
+    billing_year = _get_billing_year(db, apartment_id, year)
     if not billing_year:
         billing_year = BillingYear(apartment_id=apartment_id, year=year)
         db.add(billing_year)
@@ -37,9 +34,48 @@ def _get_or_create_billing_year(db: Session, apartment_id: int, year: int) -> Bi
     return billing_year
 
 
+def _get_billing_year(db: Session, apartment_id: int, year: int) -> BillingYear | None:
+    return (
+        db.query(BillingYear)
+        .filter(BillingYear.apartment_id == apartment_id, BillingYear.year == year)
+        .first()
+    )
+
+
+@router.get("/apartments/{apartment_id}/billing-years", response_model=list[BillingYearRead])
+def list_billing_years(apartment_id: int, db: Session = Depends(get_db)):
+    apartment = db.get(Apartment, apartment_id)
+    if not apartment:
+        raise HTTPException(404, "Wohnung nicht gefunden")
+    years = (
+        db.query(BillingYear)
+        .filter(BillingYear.apartment_id == apartment_id)
+        .order_by(BillingYear.year.desc())
+        .all()
+    )
+    return [BillingYearRead.model_validate(y) for y in years]
+
+
+@router.post("/apartments/{apartment_id}/billing-years", response_model=BillingYearRead, status_code=201)
+def create_billing_year(apartment_id: int, payload: BillingYearCreate, db: Session = Depends(get_db)):
+    apartment = db.get(Apartment, apartment_id)
+    if not apartment:
+        raise HTTPException(404, "Wohnung nicht gefunden")
+    existing = _get_billing_year(db, apartment_id, payload.year)
+    if existing:
+        raise HTTPException(409, f"Abrechnung für {payload.year} existiert bereits")
+    billing_year = BillingYear(apartment_id=apartment_id, year=payload.year)
+    db.add(billing_year)
+    db.commit()
+    db.refresh(billing_year)
+    return BillingYearRead.model_validate(billing_year)
+
+
 @router.get("/apartments/{apartment_id}/billing-years/{year}", response_model=BillingYearRead)
 def get_billing_year(apartment_id: int, year: int, db: Session = Depends(get_db)):
-    billing_year = _get_or_create_billing_year(db, apartment_id, year)
+    billing_year = _get_billing_year(db, apartment_id, year)
+    if not billing_year:
+        raise HTTPException(404, f"Abrechnung für {year} nicht angelegt")
     return BillingYearRead.model_validate(billing_year)
 
 

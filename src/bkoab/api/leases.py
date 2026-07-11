@@ -2,8 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from bkoab.database import get_db
-from bkoab.models import Lease, Room, Tenant
-from bkoab.schemas import LeaseCreate, LeaseRead, LeaseUpdate
+from bkoab.models import Lease, LeasePersonPeriod, Room, Tenant
+from bkoab.schemas import (
+    LeaseCreate,
+    LeaseRead,
+    LeaseUpdate,
+    PersonPeriodBulkUpdate,
+    PersonPeriodRead,
+)
+from bkoab.services.person_periods import ensure_default_person_periods, validate_person_periods
 
 router = APIRouter(prefix="/api", tags=["leases"])
 
@@ -18,6 +25,7 @@ def _lease_to_read(lease: Lease) -> LeaseRead:
         persons=lease.persons,
         move_in=lease.move_in,
         move_out=lease.move_out,
+        person_periods=[PersonPeriodRead.model_validate(p) for p in lease.person_periods],
     )
 
 
@@ -38,10 +46,16 @@ def list_leases(apartment_id: int, db: Session = Depends(get_db)):
         db.query(Lease)
         .join(Tenant)
         .join(Room)
-        .options(joinedload(Lease.tenant), joinedload(Lease.room))
+        .options(
+            joinedload(Lease.tenant),
+            joinedload(Lease.room),
+            joinedload(Lease.person_periods),
+        )
         .filter(Room.apartment_id == apartment_id)
         .all()
     )
+    for lease in leases:
+        ensure_default_person_periods(lease, db)
     return [_lease_to_read(lease) for lease in leases]
 
 
@@ -72,10 +86,23 @@ def create_lease(apartment_id: int, payload: LeaseCreate, db: Session = Depends(
         move_out=payload.move_out,
     )
     db.add(lease)
+    db.flush()
+    db.add(
+        LeasePersonPeriod(
+            lease_id=lease.id,
+            valid_from=payload.move_in,
+            valid_to=payload.move_out,
+            persons=payload.persons,
+        )
+    )
     db.commit()
     lease = (
         db.query(Lease)
-        .options(joinedload(Lease.tenant), joinedload(Lease.room))
+        .options(
+            joinedload(Lease.tenant),
+            joinedload(Lease.room),
+            joinedload(Lease.person_periods),
+        )
         .filter(Lease.id == lease.id)
         .one()
     )
@@ -84,7 +111,16 @@ def create_lease(apartment_id: int, payload: LeaseCreate, db: Session = Depends(
 
 @router.put("/leases/{lease_id}", response_model=LeaseRead)
 def update_lease(lease_id: int, payload: LeaseUpdate, db: Session = Depends(get_db)):
-    lease = db.query(Lease).options(joinedload(Lease.tenant), joinedload(Lease.room)).filter(Lease.id == lease_id).first()
+    lease = (
+        db.query(Lease)
+        .options(
+            joinedload(Lease.tenant),
+            joinedload(Lease.room),
+            joinedload(Lease.person_periods),
+        )
+        .filter(Lease.id == lease_id)
+        .first()
+    )
     if not lease:
         raise HTTPException(404, "Mietvertrag nicht gefunden")
 
@@ -97,6 +133,47 @@ def update_lease(lease_id: int, payload: LeaseUpdate, db: Session = Depends(get_
     db.commit()
     db.refresh(lease)
     return _lease_to_read(lease)
+
+
+@router.put("/leases/{lease_id}/person-periods", response_model=list[PersonPeriodRead])
+def update_person_periods(
+    lease_id: int,
+    payload: PersonPeriodBulkUpdate,
+    db: Session = Depends(get_db),
+):
+    lease = (
+        db.query(Lease)
+        .options(joinedload(Lease.person_periods))
+        .filter(Lease.id == lease_id)
+        .first()
+    )
+    if not lease:
+        raise HTTPException(404, "Mietvertrag nicht gefunden")
+
+    try:
+        validate_person_periods(lease, payload.periods)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    for existing in list(lease.person_periods):
+        db.delete(existing)
+    db.flush()
+
+    created: list[LeasePersonPeriod] = []
+    for period in payload.periods:
+        row = LeasePersonPeriod(
+            lease_id=lease.id,
+            valid_from=period.valid_from,
+            valid_to=period.valid_to,
+            persons=period.persons,
+        )
+        db.add(row)
+        created.append(row)
+
+    db.commit()
+    for row in created:
+        db.refresh(row)
+    return [PersonPeriodRead.model_validate(p) for p in created]
 
 
 @router.delete("/leases/{lease_id}", status_code=204)

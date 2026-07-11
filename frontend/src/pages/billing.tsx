@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useParams } from "react-router-dom"
 import { useState } from "react"
 
+import { BillingYearsCard } from "@/components/billing-years-card"
 import { LinkButton } from "@/components/link-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -30,6 +31,17 @@ export function BillingPage() {
   const billingYear = Number(year)
   const queryClient = useQueryClient()
 
+  const { data: billingYears } = useQuery({
+    queryKey: ["billing-years", apartmentId],
+    queryFn: () => api.billingYears(apartmentId),
+    enabled: !!apartmentId,
+  })
+  const { data: billingYearInfo, isError: billingYearMissing } = useQuery({
+    queryKey: ["billing-year", apartmentId, billingYear],
+    queryFn: () => api.getBillingYear(apartmentId, billingYear),
+    enabled: !!apartmentId && !!billingYear,
+    retry: false,
+  })
   const { data: apartment } = useQuery({
     queryKey: ["apartment", apartmentId],
     queryFn: () => api.getApartment(apartmentId),
@@ -38,12 +50,12 @@ export function BillingPage() {
   const { data: invoices } = useQuery({
     queryKey: ["invoices", apartmentId, billingYear],
     queryFn: () => api.invoices(apartmentId, billingYear),
-    enabled: !!apartmentId && !!billingYear,
+    enabled: !!apartmentId && !!billingYear && !!billingYearInfo,
   })
   const { data: advanceRows } = useQuery({
     queryKey: ["advance", apartmentId, billingYear],
     queryFn: () => api.advancePayments(apartmentId, billingYear),
-    enabled: !!apartmentId && !!billingYear,
+    enabled: !!apartmentId && !!billingYear && !!billingYearInfo,
   })
   const { data: preview, refetch: refetchPreview } = useQuery({
     queryKey: ["preview", apartmentId, billingYear],
@@ -115,11 +127,29 @@ export function BillingPage() {
           <h1 className="text-2xl font-semibold">Abrechnung {billingYear}</h1>
           <p className="text-muted-foreground">{apartment?.name}</p>
         </div>
-        <LinkButton variant="outline" to="/">
-          Dashboard
+        <LinkButton variant="outline" to={`/wohnungen/${apartmentId}`}>
+          Zur Wohnung
         </LinkButton>
       </div>
 
+      {billingYears && billingYears.length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          {billingYears.map((by) => (
+            <LinkButton
+              key={by.id}
+              variant={by.year === billingYear ? "default" : "outline"}
+              size="sm"
+              to={`/wohnungen/${apartmentId}/abrechnung/${by.year}`}
+            >
+              {by.year}
+            </LinkButton>
+          ))}
+        </div>
+      )}
+
+      {billingYearMissing ? (
+        <BillingYearsCard apartmentId={apartmentId} apartmentName={apartment?.name} />
+      ) : (
       <Tabs defaultValue="rechnungen">
         <TabsList>
           <TabsTrigger value="rechnungen">Rechnungen</TabsTrigger>
@@ -339,6 +369,7 @@ export function BillingPage() {
           )}
         </TabsContent>
       </Tabs>
+      )}
       <Separator />
     </div>
   )

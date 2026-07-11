@@ -42,7 +42,7 @@ def client():
         db.add(tenant)
         db.flush()
         room = db.query(Room).filter(Room.apartment_id == apt.id).first()
-        db.add(Lease(tenant_id=tenant.id, room_id=room.id, persons=1, move_in=date(2025, 1, 1)))
+        db.add(Lease(tenant_id=tenant.id, room_id=room.id, persons=1, move_in=date(2025, 1, 1), move_out=date(2025, 12, 31)))
         by = BillingYear(apartment_id=apt.id, year=2025)
         db.add(by)
         db.flush()
@@ -72,3 +72,56 @@ def test_settlement_preview_and_balance(client):
     party = data["parties"][0]
     assert float(party["total_advance_payments"]) == pytest.approx(600.0)
     assert float(party["total_costs"]) > 0
+    # second room vacant all year -> landlord vacancy head-months
+    assert float(data["landlord_vacancy_head_months"]) > 0
+
+
+def test_create_apartment_requires_single_initial_room(client):
+    bad = client.post(
+        "/api/apartments",
+        json={"name": "WG", "rooms": [{"name": "Z1"}, {"name": "Z2"}]},
+    )
+    assert bad.status_code == 422
+
+    ok = client.post(
+        "/api/apartments",
+        json={"name": "WG Neu", "rooms": [{"name": "Zimmer 1"}]},
+    )
+    assert ok.status_code == 201
+    apt_id = ok.json()["id"]
+
+    add = client.post(f"/api/apartments/{apt_id}/rooms", json={"name": "Zimmer 2"})
+    assert add.status_code == 201
+    apt = client.get(f"/api/apartments/{apt_id}")
+    assert len(apt.json()["rooms"]) == 2
+
+
+def test_billing_years_lifecycle(client):
+    create = client.post("/api/apartments/1/billing-years", json={"year": 2024})
+    assert create.status_code == 201
+
+    duplicate = client.post("/api/apartments/1/billing-years", json={"year": 2024})
+    assert duplicate.status_code == 409
+
+    listing = client.get("/api/apartments/1/billing-years")
+    assert listing.status_code == 200
+    years = [item["year"] for item in listing.json()]
+    assert 2024 in years
+    assert 2025 in years
+
+
+def test_person_periods_update(client):
+    response = client.put(
+        "/api/leases/1/person-periods",
+        json={
+            "periods": [
+                {"valid_from": "2025-01-01", "valid_to": "2025-06-30", "persons": 1},
+                {"valid_from": "2025-07-01", "valid_to": "2025-12-31", "persons": 2},
+            ]
+        },
+    )
+    assert response.status_code == 200
+    preview = client.get("/api/apartments/1/billing-years/2025/preview")
+    assert preview.status_code == 200
+    party = preview.json()["parties"][0]
+    assert float(party["head_months"]) > 12

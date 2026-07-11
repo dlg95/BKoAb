@@ -4,14 +4,21 @@ from decimal import Decimal, ROUND_HALF_UP
 
 
 @dataclass
+class PersonPeriod:
+    valid_from: date
+    valid_to: date | None
+    persons: int
+
+
+@dataclass
 class LeasePeriod:
     lease_id: int
     tenant_name: str
     room_id: int
     room_name: str
-    persons: int
     move_in: date
     move_out: date | None
+    person_periods: list[PersonPeriod]
 
 
 def _year_bounds(year: int) -> tuple[date, date]:
@@ -34,21 +41,35 @@ def _days_in_month(year: int, month: int) -> int:
     return (next_day - date(year, month, 1)).days
 
 
+def _lease_end(lease: LeasePeriod) -> date:
+    return lease.move_out or date.max
+
+
+def persons_on_day(lease: LeasePeriod, day: date) -> int:
+    if not _lease_active_on(day, lease):
+        return 0
+    lease_end = _lease_end(lease)
+    for period in lease.person_periods:
+        period_end = period.valid_to or lease_end
+        if period.valid_from <= day <= period_end:
+            return period.persons
+    return 0
+
+
 def head_months_for_lease(lease: LeasePeriod, year: int) -> Decimal:
     year_start, year_end = _year_bounds(year)
     total = Decimal("0")
-    for month in range(1, 13):
-        month_start = date(year, month, 1)
-        month_end = date(year, month, _days_in_month(year, month))
-        active_start = max(month_start, lease.move_in, year_start)
-        active_end = month_end
-        if lease.move_out:
-            active_end = min(active_end, lease.move_out)
-        active_end = min(active_end, year_end)
-        if active_start <= active_end:
-            active_days = (active_end - active_start).days + 1
-            fraction = Decimal(active_days) / Decimal(_days_in_month(year, month))
-            total += Decimal(lease.persons) * fraction
+    day = max(year_start, lease.move_in)
+    last_day = min(year_end, _lease_end(lease))
+    if day > last_day:
+        return Decimal("0")
+
+    while day <= last_day:
+        persons = persons_on_day(lease, day)
+        if persons > 0:
+            total += Decimal(persons) / Decimal(_days_in_month(day.year, day.month))
+        day += timedelta(days=1)
+
     return total.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 

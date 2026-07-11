@@ -49,6 +49,15 @@ class ApartmentCreate(BaseModel):
     payment_reference_hint: str = ""
     rooms: list[RoomCreate] = Field(default_factory=list)
 
+    @field_validator("rooms")
+    @classmethod
+    def validate_rooms(cls, v: list[RoomCreate]) -> list[RoomCreate]:
+        if len(v) != 1:
+            raise ValueError("Beim Anlegen genau ein erstes Zimmer angeben; weitere Zimmer später einzeln hinzufügen")
+        if not v[0].name.strip():
+            raise ValueError("Zimmername darf nicht leer sein")
+        return v
+
 
 class ApartmentUpdate(BaseModel):
     name: str | None = None
@@ -108,6 +117,32 @@ class LeaseUpdate(BaseModel):
     move_out: date | None = None
 
 
+class PersonPeriodCreate(BaseModel):
+    valid_from: date
+    valid_to: date | None = None
+    persons: int
+
+    @field_validator("persons")
+    @classmethod
+    def validate_persons(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("Kopfzahl muss mindestens 1 sein")
+        return v
+
+
+class PersonPeriodRead(BaseModel):
+    id: int
+    valid_from: date
+    valid_to: date | None
+    persons: int
+
+    model_config = {"from_attributes": True}
+
+
+class PersonPeriodBulkUpdate(BaseModel):
+    periods: list[PersonPeriodCreate]
+
+
 class LeaseRead(BaseModel):
     id: int
     tenant_id: int
@@ -117,6 +152,7 @@ class LeaseRead(BaseModel):
     persons: int
     move_in: date
     move_out: date | None
+    person_periods: list[PersonPeriodRead] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -128,6 +164,17 @@ class BillingYearRead(BaseModel):
     status: BillingStatus
 
     model_config = {"from_attributes": True}
+
+
+class BillingYearCreate(BaseModel):
+    year: int
+
+    @field_validator("year")
+    @classmethod
+    def validate_year(cls, v: int) -> int:
+        if v < 2000 or v > 2100:
+            raise ValueError("Jahr muss zwischen 2000 und 2100 liegen")
+        return v
 
 
 class InvoiceCreate(BaseModel):

@@ -3,7 +3,7 @@ import { useState } from "react"
 
 import { LinkButton } from "@/components/link-button"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { api } from "@/lib/api"
@@ -15,9 +15,7 @@ export function ApartmentsPage() {
     name: "",
     street: "",
     city: "",
-    room1: "Zimmer 1",
-    room2: "Zimmer 2",
-    room3: "Zimmer 3",
+    firstRoom: "Zimmer 1",
   })
 
   const createMutation = useMutation({
@@ -26,12 +24,12 @@ export function ApartmentsPage() {
         name: form.name,
         street: form.street,
         city: form.city,
-        rooms: [form.room1, form.room2, form.room3].filter(Boolean).map((name) => ({ name })),
+        rooms: [{ name: form.firstRoom }],
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["apartments"] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
-      setForm({ name: "", street: "", city: "", room1: "Zimmer 1", room2: "Zimmer 2", room3: "Zimmer 3" })
+      setForm({ name: "", street: "", city: "", firstRoom: "Zimmer 1" })
     },
   })
 
@@ -42,6 +40,9 @@ export function ApartmentsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Neue Wohnung</CardTitle>
+          <CardDescription>
+            Beim Anlegen wird ein erstes Zimmer erfasst. Weitere Zimmer legen Sie danach einzeln in den Wohnungsdetails an.
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
@@ -56,17 +57,19 @@ export function ApartmentsPage() {
             <Label>PLZ / Ort</Label>
             <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
           </div>
-          {[1, 2, 3].map((n) => (
-            <div className="space-y-2" key={n}>
-              <Label>Zimmer {n}</Label>
-              <Input
-                value={form[`room${n}` as keyof typeof form]}
-                onChange={(e) => setForm({ ...form, [`room${n}`]: e.target.value })}
-              />
-            </div>
-          ))}
+          <div className="space-y-2">
+            <Label>Erstes Zimmer</Label>
+            <Input
+              value={form.firstRoom}
+              onChange={(e) => setForm({ ...form, firstRoom: e.target.value })}
+              placeholder="z. B. Zimmer 1"
+            />
+          </div>
           <div className="md:col-span-2">
-            <Button onClick={() => createMutation.mutate()} disabled={!form.name || createMutation.isPending}>
+            <Button
+              onClick={() => createMutation.mutate()}
+              disabled={!form.name || !form.firstRoom.trim() || createMutation.isPending}
+            >
               Anlegen
             </Button>
           </div>

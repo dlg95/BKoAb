@@ -3,18 +3,27 @@ import { useParams } from "react-router-dom"
 import { useState } from "react"
 
 import { LinkButton } from "@/components/link-button"
+import { PersonPeriodsEditor } from "@/components/person-periods-editor"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { api } from "@/lib/api"
 
+function formatPersonPeriods(lease: { person_periods: { valid_from: string; valid_to: string | null; persons: number }[]; persons: number }) {
+  if (!lease.person_periods.length) return `${lease.persons} Köpfe`
+  return lease.person_periods
+    .map((p) => `${p.persons} Köpfe (${p.valid_from}${p.valid_to ? `–${p.valid_to}` : "–…"})`)
+    .join(", ")
+}
+
 export function LeasesPage() {
   const { id } = useParams()
   const apartmentId = Number(id)
   const queryClient = useQueryClient()
+  const [editingLeaseId, setEditingLeaseId] = useState<number | null>(null)
 
   const { data: apartment } = useQuery({
     queryKey: ["apartment", apartmentId],
@@ -57,6 +66,8 @@ export function LeasesPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["leases", apartmentId] }),
   })
 
+  const editingLease = leases?.find((l) => l.id === editingLeaseId)
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -72,6 +83,9 @@ export function LeasesPage() {
       <Card>
         <CardHeader>
           <CardTitle>Neuer Mietvertrag</CardTitle>
+          <CardDescription>
+            Die anfängliche Kopfzahl gilt für den gesamten Mietzeitraum. Änderungen später unter „Kopfzahl bearbeiten“.
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">
@@ -98,7 +112,7 @@ export function LeasesPage() {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Personen</Label>
+            <Label>Personen (initial)</Label>
             <Input type="number" min={1} value={form.persons} onChange={(e) => setForm({ ...form, persons: e.target.value })} />
           </div>
           <div className="space-y-2">
@@ -120,6 +134,14 @@ export function LeasesPage() {
         </CardContent>
       </Card>
 
+      {editingLease && (
+        <PersonPeriodsEditor
+          lease={editingLease}
+          apartmentId={apartmentId}
+          onClose={() => setEditingLeaseId(null)}
+        />
+      )}
+
       <Card>
         <CardContent className="pt-6">
           <Table>
@@ -127,7 +149,7 @@ export function LeasesPage() {
               <TableRow>
                 <TableHead>Mieter</TableHead>
                 <TableHead>Zimmer</TableHead>
-                <TableHead>Personen</TableHead>
+                <TableHead>Kopfzahl-Zeiträume</TableHead>
                 <TableHead>Einzug</TableHead>
                 <TableHead>Auszug</TableHead>
                 <TableHead />
@@ -138,10 +160,15 @@ export function LeasesPage() {
                 <TableRow key={lease.id}>
                   <TableCell>{lease.tenant_name}</TableCell>
                   <TableCell>{lease.room_name}</TableCell>
-                  <TableCell>{lease.persons}</TableCell>
+                  <TableCell className="max-w-xs text-sm text-muted-foreground">
+                    {formatPersonPeriods(lease)}
+                  </TableCell>
                   <TableCell>{lease.move_in}</TableCell>
                   <TableCell>{lease.move_out || "—"}</TableCell>
-                  <TableCell>
+                  <TableCell className="space-x-1">
+                    <Button variant="outline" size="sm" onClick={() => setEditingLeaseId(lease.id)}>
+                      Kopfzahl
+                    </Button>
                     <Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate(lease.id)}>
                       Löschen
                     </Button>

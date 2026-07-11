@@ -14,6 +14,7 @@ from bkoab.schemas import (
     DashboardRead,
     LandlordProfileRead,
     LandlordProfileUpdate,
+    RoomCreate,
     RoomRead,
 )
 
@@ -115,6 +116,35 @@ def update_apartment(apartment_id: int, payload: ApartmentUpdate, db: Session = 
     db.commit()
     apartment = db.query(Apartment).options(joinedload(Apartment.rooms)).filter(Apartment.id == apartment_id).one()
     return _apartment_to_read(apartment)
+
+
+@router.post("/apartments/{apartment_id}/rooms", response_model=RoomRead, status_code=201)
+def add_room(apartment_id: int, payload: RoomCreate, db: Session = Depends(get_db)):
+    apartment = db.get(Apartment, apartment_id)
+    if not apartment:
+        raise HTTPException(404, "Wohnung nicht gefunden")
+    if not payload.name.strip():
+        raise HTTPException(400, "Zimmername darf nicht leer sein")
+    room = Room(apartment_id=apartment_id, name=payload.name.strip())
+    db.add(room)
+    db.commit()
+    db.refresh(room)
+    return RoomRead.model_validate(room)
+
+
+@router.delete("/rooms/{room_id}", status_code=204)
+def delete_room(room_id: int, db: Session = Depends(get_db)):
+    room = db.get(Room, room_id)
+    if not room:
+        raise HTTPException(404, "Zimmer nicht gefunden")
+    if db.query(Lease).filter(Lease.room_id == room_id).count() > 0:
+        raise HTTPException(400, "Zimmer hat Mietverträge und kann nicht gelöscht werden")
+    apartment_id = room.apartment_id
+    remaining = db.query(Room).filter(Room.apartment_id == apartment_id, Room.id != room_id).count()
+    if remaining == 0:
+        raise HTTPException(400, "Das letzte Zimmer einer Wohnung kann nicht gelöscht werden")
+    db.delete(room)
+    db.commit()
 
 
 @router.delete("/apartments/{apartment_id}", status_code=204)
