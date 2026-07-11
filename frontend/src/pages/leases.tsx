@@ -67,6 +67,9 @@ export function LeasesPage() {
   })
 
   const editingLease = leases?.find((l) => l.id === editingLeaseId)
+  const roomItems = Object.fromEntries(
+    (apartment?.rooms ?? []).map((room) => [String(room.id), room.name]),
+  )
 
   return (
     <div className="space-y-6">
@@ -98,7 +101,11 @@ export function LeasesPage() {
           </div>
           <div className="space-y-2">
             <Label>Zimmer</Label>
-            <Select value={form.room_id} onValueChange={(v) => v && setForm({ ...form, room_id: v })}>
+            <Select
+              value={form.room_id || null}
+              items={roomItems}
+              onValueChange={(v) => v && setForm({ ...form, room_id: v })}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Zimmer wählen" />
               </SelectTrigger>
@@ -152,7 +159,7 @@ export function LeasesPage() {
                 <TableHead>Kopfzahl-Zeiträume</TableHead>
                 <TableHead>Einzug</TableHead>
                 <TableHead>Auszug</TableHead>
-                <TableHead />
+                <TableHead className="w-0" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -160,12 +167,12 @@ export function LeasesPage() {
                 <TableRow key={lease.id}>
                   <TableCell>{lease.tenant_name}</TableCell>
                   <TableCell>{lease.room_name}</TableCell>
-                  <TableCell className="max-w-xs text-sm text-muted-foreground">
+                  <TableCell className="text-sm text-muted-foreground">
                     {formatPersonPeriods(lease)}
                   </TableCell>
                   <TableCell>{lease.move_in}</TableCell>
                   <TableCell>{lease.move_out || "—"}</TableCell>
-                  <TableCell className="space-x-1">
+                  <TableCell className="w-0 space-x-1">
                     <Button variant="outline" size="sm" onClick={() => setEditingLeaseId(lease.id)}>
                       Kopfzahl
                     </Button>

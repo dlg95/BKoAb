@@ -7,6 +7,7 @@ from bkoab.services.allocation import (
     PersonPeriod,
     compute_head_months,
     head_months_for_lease,
+    occupied_months_in_year,
 )
 from bkoab.services.proration import prorate_amount
 
@@ -71,6 +72,13 @@ def test_vacancy_landlord_head_months():
     party, landlord, total = compute_head_months(leases, [1, 2], 2025)
     assert float(landlord) > 0
     assert float(total) == pytest.approx(float(party[1]) + float(landlord), rel=1e-3)
+
+
+def test_occupied_months_in_year():
+    assert occupied_months_in_year(date(2025, 1, 1), date(2025, 12, 31), 2025) == list(range(1, 13))
+    assert occupied_months_in_year(date(2025, 3, 15), date(2025, 8, 31), 2025) == [3, 4, 5, 6, 7, 8]
+    assert occupied_months_in_year(date(2025, 7, 1), None, 2025) == [7, 8, 9, 10, 11, 12]
+    assert occupied_months_in_year(date(2026, 1, 1), None, 2025) == []
 
 
 def test_tenant_change_no_double_count():

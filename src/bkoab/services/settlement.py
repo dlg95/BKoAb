@@ -12,7 +12,7 @@ from bkoab.schemas import (
     PartySettlement,
     SettlementPreview,
 )
-from bkoab.services.allocation import compute_head_months
+from bkoab.services.allocation import compute_head_months, occupied_months_in_year
 from bkoab.services.person_periods import ensure_default_person_periods, lease_to_allocation_period
 from bkoab.services.proration import prorate_amount
 
@@ -98,10 +98,17 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
             )
         )
 
+    lease_occupied_months = {
+        lease.id: set(occupied_months_in_year(lease.move_in, lease.move_out, year))
+        for lease in leases_db
+    }
+
     advance_by_lease: dict[int, Decimal] = {}
     for payment in db.query(AdvancePayment).join(Lease).join(Room).filter(
         Room.apartment_id == apartment_id
     ).all():
+        if payment.month not in lease_occupied_months.get(payment.lease_id, set()):
+            continue
         advance_by_lease[payment.lease_id] = advance_by_lease.get(
             payment.lease_id, Decimal("0")
         ) + Decimal(str(payment.amount))

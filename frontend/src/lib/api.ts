@@ -58,6 +58,7 @@ export type AdvancePaymentRow = {
   tenant_name: string
   room_name: string
   months: Record<string, string>
+  occupied_months: number[]
 }
 
 export type PartySettlement = {

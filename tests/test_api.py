@@ -125,3 +125,40 @@ def test_person_periods_update(client):
     assert preview.status_code == 200
     party = preview.json()["parties"][0]
     assert float(party["head_months"]) > 12
+
+
+def test_advance_payments_occupied_months(client):
+    response = client.get("/api/apartments/1/billing-years/2025/advance-payments")
+    assert response.status_code == 200
+    row = response.json()[0]
+    assert row["occupied_months"] == list(range(1, 13))
+
+    create = client.post(
+        "/api/apartments/1/leases",
+        json={
+            "tenant_name": "Bernd",
+            "tenant_contact": "",
+            "room_id": 2,
+            "persons": 1,
+            "move_in": "2025-04-01",
+            "move_out": "2025-09-30",
+        },
+    )
+    assert create.status_code == 201
+    lease_id = create.json()["id"]
+
+    rows = client.get("/api/apartments/1/billing-years/2025/advance-payments").json()
+    partial = next(item for item in rows if item["lease_id"] == lease_id)
+    assert partial["occupied_months"] == [4, 5, 6, 7, 8, 9]
+
+    ok = client.put(
+        "/api/apartments/1/billing-years/2025/advance-payments",
+        json={"payments": [{"lease_id": lease_id, "month": 5, "amount": "25"}]},
+    )
+    assert ok.status_code == 200
+
+    rejected = client.put(
+        "/api/apartments/1/billing-years/2025/advance-payments",
+        json={"payments": [{"lease_id": lease_id, "month": 1, "amount": "10"}]},
+    )
+    assert rejected.status_code == 400

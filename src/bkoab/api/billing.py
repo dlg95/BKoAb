@@ -17,6 +17,7 @@ from bkoab.schemas import (
     InvoiceRead,
     SettlementPreview,
 )
+from bkoab.services.allocation import occupied_months_in_year
 from bkoab.services.docx_export import generate_settlement_docx
 from bkoab.services.proration import prorate_amount
 from bkoab.services.settlement import build_settlement_preview
@@ -162,6 +163,7 @@ def get_advance_payments(apartment_id: int, year: int, db: Session = Depends(get
     }
     rows = []
     for lease in leases:
+        occupied = occupied_months_in_year(lease.move_in, lease.move_out, year)
         months = {m: payments.get((lease.id, m), Decimal("0")) for m in range(1, 13)}
         rows.append(
             AdvancePaymentMatrixRow(
@@ -169,6 +171,7 @@ def get_advance_payments(apartment_id: int, year: int, db: Session = Depends(get
                 tenant_name=lease.tenant.name,
                 room_name=lease.room.name,
                 months=months,
+                occupied_months=occupied,
             )
         )
     return rows
@@ -181,15 +184,20 @@ def update_advance_payments(
     payload: AdvancePaymentBulkUpdate,
     db: Session = Depends(get_db),
 ):
-    lease_ids = {
-        lease.id
-        for lease in db.query(Lease).join(Room).filter(Room.apartment_id == apartment_id).all()
-    }
+    leases = db.query(Lease).join(Room).filter(Room.apartment_id == apartment_id).all()
+    leases_by_id = {lease.id: lease for lease in leases}
     for item in payload.payments:
-        if item.lease_id not in lease_ids:
+        if item.lease_id not in leases_by_id:
             raise HTTPException(400, f"Ungültiger Mietvertrag {item.lease_id}")
         if item.month < 1 or item.month > 12:
             raise HTTPException(400, "Monat muss zwischen 1 und 12 liegen")
+        lease = leases_by_id[item.lease_id]
+        occupied = occupied_months_in_year(lease.move_in, lease.move_out, year)
+        if item.month not in occupied:
+            raise HTTPException(
+                400,
+                f"Vorauszahlung für Monat {item.month} nicht möglich — Mieter nicht im Mietzeitraum",
+            )
         existing = (
             db.query(AdvancePayment)
             .filter(AdvancePayment.lease_id == item.lease_id, AdvancePayment.month == item.month)

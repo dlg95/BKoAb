@@ -45,6 +45,21 @@ def _lease_end(lease: LeasePeriod) -> date:
     return lease.move_out or date.max
 
 
+def occupied_months_in_year(move_in: date, move_out: date | None, year: int) -> list[int]:
+    """Returns calendar months in `year` during which the lease overlaps at least one day."""
+    months: list[int] = []
+    for month in range(1, 13):
+        month_start = date(year, month, 1)
+        if month == 12:
+            month_end = date(year, 12, 31)
+        else:
+            month_end = date(year, month + 1, 1) - timedelta(days=1)
+        lease_end = move_out or date.max
+        if move_in <= month_end and month_start <= lease_end:
+            months.append(month)
+    return months
+
+
 def persons_on_day(lease: LeasePeriod, day: date) -> int:
     if not _lease_active_on(day, lease):
         return 0

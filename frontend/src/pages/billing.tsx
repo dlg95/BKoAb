@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { api, formatEur, MONTHS } from "@/lib/api"
+import { abbreviateTenantName } from "@/lib/utils"
 
 const INVOICE_TYPES = [
   { value: "weg", label: "WEG-Betriebskosten" },
@@ -23,7 +24,11 @@ const INVOICE_TYPES = [
   { value: "handwerker", label: "Handwerker" },
   { value: "grundsteuer", label: "Grundsteuer" },
   { value: "sonstiges", label: "Sonstiges" },
-]
+] as const
+
+const INVOICE_TYPE_ITEMS = Object.fromEntries(
+  INVOICE_TYPES.map((type) => [type.value, type.label]),
+)
 
 export function BillingPage() {
   const { id, year } = useParams()
@@ -90,10 +95,15 @@ export function BillingPage() {
 
   const saveAdvance = useMutation({
     mutationFn: () => {
-      const payments = Object.entries(advanceDraft).map(([key, amount]) => {
-        const [leaseId, month] = key.split("-")
-        return { lease_id: Number(leaseId), month: Number(month), amount: amount || "0" }
-      })
+      const payments = Object.entries(advanceDraft)
+        .map(([key, amount]) => {
+          const [leaseId, month] = key.split("-")
+          return { lease_id: Number(leaseId), month: Number(month), amount: amount || "0" }
+        })
+        .filter(({ lease_id, month }) => {
+          const row = advanceRows?.find((r) => r.lease_id === lease_id)
+          return row?.occupied_months.includes(month)
+        })
       return api.updateAdvancePayments(apartmentId, billingYear, payments)
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["advance", apartmentId, billingYear] }),
@@ -115,9 +125,15 @@ export function BillingPage() {
     if (!advanceRows) return
     const draft: Record<string, string> = {}
     advanceRows.forEach((row) => {
-      for (let m = 1; m <= 12; m++) draft[`${row.lease_id}-${m}`] = amount
+      for (const month of row.occupied_months) {
+        draft[`${row.lease_id}-${month}`] = amount
+      }
     })
     setAdvanceDraft(draft)
+  }
+
+  function isOccupiedMonth(row: { occupied_months: number[] }, month: number) {
+    return row.occupied_months.includes(month)
   }
 
   return (
@@ -166,7 +182,11 @@ export function BillingPage() {
             <CardContent className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <Label>Kostenart</Label>
-                <Select value={invoiceForm.invoice_type} onValueChange={(v) => v && setInvoiceForm({ ...invoiceForm, invoice_type: v })}>
+                <Select
+                  value={invoiceForm.invoice_type}
+                  items={INVOICE_TYPE_ITEMS}
+                  onValueChange={(v) => v && setInvoiceForm({ ...invoiceForm, invoice_type: v })}
+                >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {INVOICE_TYPES.map((t) => (
@@ -209,7 +229,7 @@ export function BillingPage() {
                     <TableHead>Rechnungsbetrag</TableHead>
                     <TableHead>Anteil {billingYear}</TableHead>
                     <TableHead>Zeitraum</TableHead>
-                    <TableHead />
+                    <TableHead className="w-0" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -220,7 +240,7 @@ export function BillingPage() {
                       <TableCell>{formatEur(inv.amount)}</TableCell>
                       <TableCell>{inv.prorated_amount ? formatEur(inv.prorated_amount) : "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{inv.period_start} – {inv.period_end}</TableCell>
-                      <TableCell>
+                      <TableCell className="w-0">
                         <Button variant="ghost" size="sm" onClick={() => deleteInvoice.mutate(inv.id)}>Löschen</Button>
                       </TableCell>
                     </TableRow>
@@ -252,25 +272,36 @@ export function BillingPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Mieter</TableHead>
-                      <TableHead>Zimmer</TableHead>
-                      {MONTHS.map((m) => <TableHead key={m}>{m}</TableHead>)}
+                      <TableHead className="w-44 whitespace-nowrap">Mieter</TableHead>
+                      <TableHead className="w-36 whitespace-nowrap">Zimmer</TableHead>
+                      {MONTHS.map((m) => <TableHead key={m} className="w-20 whitespace-nowrap">{m}</TableHead>)}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {advanceRows?.map((row) => (
                       <TableRow key={row.lease_id}>
-                        <TableCell>{row.tenant_name}</TableCell>
-                        <TableCell>{row.room_name}</TableCell>
+                        <TableCell
+                          className="overflow-visible whitespace-nowrap"
+                          title={row.tenant_name}
+                        >
+                          {abbreviateTenantName(row.tenant_name)}
+                        </TableCell>
+                        <TableCell className="overflow-visible whitespace-nowrap">
+                          {row.room_name}
+                        </TableCell>
                         {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
-                          <TableCell key={month}>
-                            <Input
-                              className="w-20"
-                              type="number"
-                              step="0.01"
-                              value={getAdvanceValue(row.lease_id, month)}
-                              onChange={(e) => setAdvanceDraft({ ...advanceDraft, [`${row.lease_id}-${month}`]: e.target.value })}
-                            />
+                          <TableCell key={month} className="w-20 p-1">
+                            {isOccupiedMonth(row, month) ? (
+                              <Input
+                                className="w-20"
+                                type="number"
+                                step="0.01"
+                                value={getAdvanceValue(row.lease_id, month)}
+                                onChange={(e) => setAdvanceDraft({ ...advanceDraft, [`${row.lease_id}-${month}`]: e.target.value })}
+                              />
+                            ) : (
+                              <span className="flex h-9 w-20 items-center justify-center text-muted-foreground">—</span>
+                            )}
                           </TableCell>
                         ))}
                       </TableRow>

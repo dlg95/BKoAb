@@ -135,7 +135,7 @@ export function ApartmentDetailPage() {
                       <span className="ml-2 text-xs text-muted-foreground">(beim Anlegen erstellt)</span>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="w-24">
                     {index > 0 && (
                       <Button
                         variant="ghost"

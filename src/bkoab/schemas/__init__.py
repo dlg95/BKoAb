@@ -223,6 +223,7 @@ class AdvancePaymentMatrixRow(BaseModel):
     tenant_name: str
     room_name: str
     months: dict[int, Decimal]
+    occupied_months: list[int]
 
 
 class CostLineItem(BaseModel):
