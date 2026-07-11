@@ -1,6 +1,6 @@
 # BKoAb — Betriebskostenabrechnung WG
 
-Lokales Tool zur Betriebskostenabrechnung für WG-Vermietungen.
+Betriebskosten-Abrechnungstool für WG-Vermietungen mit pro-Kopf-Umlage.
 
 ## Installation
 

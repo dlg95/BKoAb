@@ -49,6 +49,9 @@ export function Layout() {
           </nav>
         </div>
       </header>
+      <p className="border-b px-6 py-1.5 text-center text-xs text-muted-foreground">
+        Betriebskosten-Abrechnungstool für WG-Vermietungen mit pro-Kopf-Umlage
+      </p>
       <main className="mx-auto max-w-6xl px-6 py-8">
         <Outlet />
       </main>
