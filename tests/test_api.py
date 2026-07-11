@@ -76,24 +76,19 @@ def test_settlement_preview_and_balance(client):
     assert float(data["landlord_vacancy_head_months"]) > 0
 
 
-def test_create_apartment_requires_single_initial_room(client):
-    bad = client.post(
-        "/api/apartments",
-        json={"name": "WG", "rooms": [{"name": "Z1"}, {"name": "Z2"}]},
-    )
-    assert bad.status_code == 422
-
+def test_create_apartment_without_initial_room(client):
     ok = client.post(
         "/api/apartments",
-        json={"name": "WG Neu", "rooms": [{"name": "Zimmer 1"}]},
+        json={"name": "WG Neu"},
     )
     assert ok.status_code == 201
     apt_id = ok.json()["id"]
+    assert ok.json()["rooms"] == []
 
-    add = client.post(f"/api/apartments/{apt_id}/rooms", json={"name": "Zimmer 2"})
+    add = client.post(f"/api/apartments/{apt_id}/rooms", json={"name": "Zimmer 1"})
     assert add.status_code == 201
     apt = client.get(f"/api/apartments/{apt_id}")
-    assert len(apt.json()["rooms"]) == 2
+    assert len(apt.json()["rooms"]) == 1
 
 
 def test_billing_years_lifecycle(client):
@@ -180,6 +175,56 @@ def test_advance_payments_occupied_months(client):
     rows = client.get("/api/apartments/1/billing-years/2025/advance-payments").json()
     lease_ids = [item["lease_id"] for item in rows]
     assert outside_lease_id not in lease_ids
+
+
+def test_invoice_update_and_delete(client):
+    create = client.post(
+        "/api/apartments/1/billing-years/2025/invoices",
+        json={
+            "invoice_type": "gas",
+            "label": "Jahresabrechnung",
+            "amount": "1200",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+            "note": "Original",
+        },
+    )
+    assert create.status_code == 201
+    invoice_id = create.json()["id"]
+
+    update = client.put(
+        f"/api/invoices/{invoice_id}",
+        json={
+            "invoice_type": "strom",
+            "label": "Strom 2025",
+            "amount": "900",
+            "period_start": "2025-03-01",
+            "period_end": "2025-12-31",
+            "note": "Geändert",
+        },
+    )
+    assert update.status_code == 200
+    data = update.json()
+    assert data["invoice_type"] == "strom"
+    assert data["label"] == "Strom 2025"
+    assert float(data["amount"]) == pytest.approx(900.0)
+    assert data["note"] == "Geändert"
+
+    delete = client.delete(f"/api/invoices/{invoice_id}")
+    assert delete.status_code == 204
+
+    missing = client.put(
+        f"/api/invoices/{invoice_id}",
+        json={
+            "invoice_type": "gas",
+            "label": "x",
+            "amount": "1",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+            "note": "",
+        },
+    )
+    assert missing.status_code == 404
 
 
 def test_export_single_party_docx(client):

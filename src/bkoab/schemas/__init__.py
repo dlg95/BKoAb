@@ -49,15 +49,6 @@ class ApartmentCreate(BaseModel):
     payment_reference_hint: str = ""
     rooms: list[RoomCreate] = Field(default_factory=list)
 
-    @field_validator("rooms")
-    @classmethod
-    def validate_rooms(cls, v: list[RoomCreate]) -> list[RoomCreate]:
-        if len(v) != 1:
-            raise ValueError("Beim Anlegen genau ein erstes Zimmer angeben; weitere Zimmer später einzeln hinzufügen")
-        if not v[0].name.strip():
-            raise ValueError("Zimmername darf nicht leer sein")
-        return v
-
 
 class ApartmentUpdate(BaseModel):
     name: str | None = None
@@ -191,6 +182,10 @@ class InvoiceCreate(BaseModel):
         if v < 0:
             raise ValueError("Betrag darf nicht negativ sein")
         return v
+
+
+class InvoiceUpdate(InvoiceCreate):
+    pass
 
 
 class InvoiceRead(BaseModel):

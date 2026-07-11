@@ -15,7 +15,6 @@ export function ApartmentsPage() {
     name: "",
     street: "",
     city: "",
-    firstRoom: "Zimmer 1",
   })
 
   const createMutation = useMutation({
@@ -24,12 +23,11 @@ export function ApartmentsPage() {
         name: form.name,
         street: form.street,
         city: form.city,
-        rooms: [{ name: form.firstRoom }],
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["apartments"] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
-      setForm({ name: "", street: "", city: "", firstRoom: "Zimmer 1" })
+      setForm({ name: "", street: "", city: "" })
     },
   })
 
@@ -41,7 +39,7 @@ export function ApartmentsPage() {
         <CardHeader>
           <CardTitle>Neue Wohnung</CardTitle>
           <CardDescription>
-            Beim Anlegen wird ein erstes Zimmer erfasst. Weitere Zimmer legen Sie danach einzeln in den Wohnungsdetails an.
+            Zimmer legen Sie danach einzeln in den Wohnungsdetails an.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
@@ -57,18 +55,10 @@ export function ApartmentsPage() {
             <Label>PLZ / Ort</Label>
             <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
           </div>
-          <div className="space-y-2">
-            <Label>Erstes Zimmer</Label>
-            <Input
-              value={form.firstRoom}
-              onChange={(e) => setForm({ ...form, firstRoom: e.target.value })}
-              placeholder="z. B. Zimmer 1"
-            />
-          </div>
           <div className="md:col-span-2">
             <Button
               onClick={() => createMutation.mutate()}
-              disabled={!form.name || !form.firstRoom.trim() || createMutation.isPending}
+              disabled={!form.name || createMutation.isPending}
             >
               Anlegen
             </Button>

@@ -127,16 +127,13 @@ export function ApartmentDetailPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {apartment.rooms.map((room, index) => (
+              {apartment.rooms.map((room) => (
                 <TableRow key={room.id}>
                   <TableCell>
                     {room.name}
-                    {index === 0 && (
-                      <span className="ml-2 text-xs text-muted-foreground">(beim Anlegen erstellt)</span>
-                    )}
                   </TableCell>
                   <TableCell className="w-24">
-                    {index > 0 && (
+                    {apartment.rooms.length > 1 && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -154,7 +151,7 @@ export function ApartmentDetailPage() {
 
           <div className="flex flex-wrap items-end gap-2 border-t pt-4">
             <div className="space-y-2">
-              <Label>Weiteres Zimmer hinzufügen</Label>
+              <Label>{apartment.rooms.length === 0 ? "Zimmer hinzufügen" : "Weiteres Zimmer hinzufügen"}</Label>
               <Input
                 value={newRoomName}
                 onChange={(e) => setNewRoomName(e.target.value)}

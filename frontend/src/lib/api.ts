@@ -137,6 +137,7 @@ export const api = {
     ),
   invoices: (apartmentId: number, year: number) => request<Invoice[]>(`/apartments/${apartmentId}/billing-years/${year}/invoices`),
   createInvoice: (apartmentId: number, year: number, data: object) => request<Invoice>(`/apartments/${apartmentId}/billing-years/${year}/invoices`, { method: "POST", body: JSON.stringify(data) }),
+  updateInvoice: (id: number, data: object) => request<Invoice>(`/invoices/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteInvoice: (id: number) => request<void>(`/invoices/${id}`, { method: "DELETE" }),
   advancePayments: (apartmentId: number, year: number) => request<AdvancePaymentRow[]>(`/apartments/${apartmentId}/billing-years/${year}/advance-payments`),
   updateAdvancePayments: (apartmentId: number, year: number, payments: object[]) =>

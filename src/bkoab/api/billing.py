@@ -15,6 +15,7 @@ from bkoab.schemas import (
     BillingYearRead,
     InvoiceCreate,
     InvoiceRead,
+    InvoiceUpdate,
     SettlementPreview,
 )
 from bkoab.services.allocation import occupied_months_in_year
@@ -144,28 +145,27 @@ def get_billing_year(apartment_id: int, year: int, db: Session = Depends(get_db)
     return BillingYearRead.model_validate(billing_year)
 
 
+def _invoice_to_read(invoice: Invoice, year: int) -> InvoiceRead:
+    prorated, _ = prorate_amount(float(invoice.amount), invoice.period_start, invoice.period_end, year)
+    return InvoiceRead(
+        id=invoice.id,
+        billing_year_id=invoice.billing_year_id,
+        invoice_type=invoice.invoice_type,
+        invoice_type_label=INVOICE_TYPE_LABELS.get(invoice.invoice_type, invoice.invoice_type.value),
+        label=invoice.label,
+        amount=invoice.amount,
+        period_start=invoice.period_start,
+        period_end=invoice.period_end,
+        note=invoice.note,
+        prorated_amount=Decimal(str(round(prorated, 2))),
+    )
+
+
 @router.get("/apartments/{apartment_id}/billing-years/{year}/invoices", response_model=list[InvoiceRead])
 def list_invoices(apartment_id: int, year: int, db: Session = Depends(get_db)):
     billing_year = _get_or_create_billing_year(db, apartment_id, year)
     invoices = db.query(Invoice).filter(Invoice.billing_year_id == billing_year.id).all()
-    result = []
-    for inv in invoices:
-        prorated, _ = prorate_amount(float(inv.amount), inv.period_start, inv.period_end, year)
-        result.append(
-            InvoiceRead(
-                id=inv.id,
-                billing_year_id=inv.billing_year_id,
-                invoice_type=inv.invoice_type,
-                invoice_type_label=INVOICE_TYPE_LABELS.get(inv.invoice_type, inv.invoice_type.value),
-                label=inv.label,
-                amount=inv.amount,
-                period_start=inv.period_start,
-                period_end=inv.period_end,
-                note=inv.note,
-                prorated_amount=Decimal(str(round(prorated, 2))),
-            )
-        )
-    return result
+    return [_invoice_to_read(inv, year) for inv in invoices]
 
 
 @router.post("/apartments/{apartment_id}/billing-years/{year}/invoices", response_model=InvoiceRead, status_code=201)
@@ -185,19 +185,29 @@ def create_invoice(apartment_id: int, year: int, payload: InvoiceCreate, db: Ses
     db.add(invoice)
     db.commit()
     db.refresh(invoice)
-    prorated, _ = prorate_amount(float(invoice.amount), invoice.period_start, invoice.period_end, year)
-    return InvoiceRead(
-        id=invoice.id,
-        billing_year_id=invoice.billing_year_id,
-        invoice_type=invoice.invoice_type,
-        invoice_type_label=INVOICE_TYPE_LABELS.get(invoice.invoice_type, invoice.invoice_type.value),
-        label=invoice.label,
-        amount=invoice.amount,
-        period_start=invoice.period_start,
-        period_end=invoice.period_end,
-        note=invoice.note,
-        prorated_amount=Decimal(str(round(prorated, 2))),
-    )
+    return _invoice_to_read(invoice, year)
+
+
+@router.put("/invoices/{invoice_id}", response_model=InvoiceRead)
+def update_invoice(invoice_id: int, payload: InvoiceUpdate, db: Session = Depends(get_db)):
+    if payload.period_start > payload.period_end:
+        raise HTTPException(400, "Rechnungszeitraum ungültig")
+    invoice = db.get(Invoice, invoice_id)
+    if not invoice:
+        raise HTTPException(404, "Rechnung nicht gefunden")
+    billing_year = db.get(BillingYear, invoice.billing_year_id)
+    if not billing_year:
+        raise HTTPException(404, "Abrechnungsjahr nicht gefunden")
+
+    invoice.invoice_type = payload.invoice_type
+    invoice.label = payload.label
+    invoice.amount = payload.amount
+    invoice.period_start = payload.period_start
+    invoice.period_end = payload.period_end
+    invoice.note = payload.note
+    db.commit()
+    db.refresh(invoice)
+    return _invoice_to_read(invoice, billing_year.year)
 
 
 @router.delete("/invoices/{invoice_id}", status_code=204)

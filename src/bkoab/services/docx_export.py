@@ -45,53 +45,28 @@ def _add_head_months_explanation(
     party: PartySettlement,
     person_period_lines: list[PersonPeriodLine],
 ) -> None:
-    add_styled_paragraph(doc, "Erläuterung der Kopfmonate", bold=True, size=11)
+    add_styled_paragraph(doc, "Kopfmonate", bold=True, size=10)
     add_styled_paragraph(
         doc,
-        "Die Nebenkosten werden nach dem Kopfmonatsverfahren verteilt. Ein Kopfmonat entspricht "
-        "einer Person, die einen Kalendermonat in der Wohnung bewohnt hat. Bei Ein- oder Auszug "
-        "innerhalb eines Monats sowie bei wechselnder Personenzahl werden die Kopfmonate taggenau "
-        "berechnet: Personen × Bewohnungsanteil je Tag.",
-        size=10,
+        "Verteilung nach bewohnten Personentagen. "
+        f"Ihr Anteil = Gesamtkosten × ({party.head_months:.2f} ÷ {preview.total_head_months:.2f}).",
+        size=9,
     )
-    add_styled_paragraph(
-        doc,
-        "Die Gesamtkosten des Objekts (je Kostenart anteilig für das Abrechnungsjahr) werden auf "
-        "alle Kopfmonate umgelegt. Ihr Anteil ergibt sich aus: "
-        "Gesamtkosten × (Ihre Kopfmonate ÷ Kopfmonate gesamt).",
-        size=10,
+
+    summary = (
+        f"Ihre Kopfmonate: {party.head_months:.2f}, gesamt Objekt: {preview.total_head_months:.2f}"
     )
+    if float(preview.landlord_vacancy_head_months) > 0:
+        summary += f", Leerstand Vermieter: {preview.landlord_vacancy_head_months:.2f}"
+    add_styled_paragraph(doc, summary + ".", size=9)
 
     if person_period_lines:
-        doc.add_paragraph()
-        add_styled_paragraph(doc, "Ihre Kopfzahl-Zeiträume:", bold=True, size=10)
-        period_table = doc.add_table(rows=1, cols=3)
-        period_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-        set_table_borders(period_table)
-        for idx, title in enumerate(["Von", "Bis", "Personen"]):
-            set_cell_text(period_table.rows[0].cells[idx], title, bold=True, size=9, shade=True)
-        for period in person_period_lines:
-            row = period_table.add_row().cells
-            set_cell_text(row[0], period.valid_from, size=9)
-            set_cell_text(row[1], _format_period_end(period.valid_to), size=9)
-            set_cell_text(row[2], str(period.persons), size=9, align_right=True)
+        periods_text = ", ".join(
+            f"{period.persons} Pers. ({period.valid_from}–{_format_period_end(period.valid_to)})"
+            for period in person_period_lines
+        )
+        add_styled_paragraph(doc, f"Kopfzahl: {periods_text}.", size=9)
 
-    doc.add_paragraph()
-    add_styled_paragraph(
-        doc,
-        f"Ihre Kopfmonate im Abrechnungsjahr {preview.year}: {party.head_months:.4f}",
-        size=10,
-    )
-    add_styled_paragraph(
-        doc,
-        f"Kopfmonate gesamt (alle Mietparteien und Leerstand): {preview.total_head_months:.4f}",
-        size=10,
-    )
-    add_styled_paragraph(
-        doc,
-        f"Davon Leerstand (Vermieteranteil): {preview.landlord_vacancy_head_months:.4f}",
-        size=10,
-    )
     doc.add_paragraph()
 
 

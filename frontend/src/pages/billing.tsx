@@ -32,6 +32,17 @@ const INVOICE_TYPE_ITEMS = Object.fromEntries(
   INVOICE_TYPES.map((type) => [type.value, type.label]),
 )
 
+function defaultInvoiceForm(year: number) {
+  return {
+    invoice_type: "weg",
+    label: "",
+    amount: "",
+    period_start: `${year}-01-01`,
+    period_end: `${year}-12-31`,
+    note: "",
+  }
+}
+
 export function BillingPage() {
   const { id, year } = useParams()
   const apartmentId = Number(id)
@@ -70,14 +81,8 @@ export function BillingPage() {
     enabled: false,
   })
 
-  const [invoiceForm, setInvoiceForm] = useState({
-    invoice_type: "weg",
-    label: "",
-    amount: "",
-    period_start: `${billingYear}-01-01`,
-    period_end: `${billingYear}-12-31`,
-    note: "",
-  })
+  const [invoiceForm, setInvoiceForm] = useState(defaultInvoiceForm(billingYear))
+  const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null)
   const [advanceDraft, setAdvanceDraft] = useState<Record<string, string>>({})
   const [exportDirHandle, setExportDirHandle] = useState<FileSystemDirectoryHandle | null>(null)
   const [exportDirName, setExportDirName] = useState<string | null>(null)
@@ -90,13 +95,52 @@ export function BillingPage() {
         ...invoiceForm,
         amount: invoiceForm.amount,
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["invoices", apartmentId, billingYear] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices", apartmentId, billingYear] })
+      setInvoiceForm(defaultInvoiceForm(billingYear))
+    },
+  })
+
+  const updateInvoice = useMutation({
+    mutationFn: () =>
+      api.updateInvoice(editingInvoiceId!, {
+        ...invoiceForm,
+        amount: invoiceForm.amount,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices", apartmentId, billingYear] })
+      setEditingInvoiceId(null)
+      setInvoiceForm(defaultInvoiceForm(billingYear))
+    },
   })
 
   const deleteInvoice = useMutation({
     mutationFn: (invoiceId: number) => api.deleteInvoice(invoiceId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["invoices", apartmentId, billingYear] }),
+    onSuccess: (_, invoiceId) => {
+      queryClient.invalidateQueries({ queryKey: ["invoices", apartmentId, billingYear] })
+      if (editingInvoiceId === invoiceId) {
+        setEditingInvoiceId(null)
+        setInvoiceForm(defaultInvoiceForm(billingYear))
+      }
+    },
   })
+
+  function startEditInvoice(invoice: NonNullable<typeof invoices>[number]) {
+    setEditingInvoiceId(invoice.id)
+    setInvoiceForm({
+      invoice_type: invoice.invoice_type,
+      label: invoice.label,
+      amount: invoice.amount,
+      period_start: invoice.period_start,
+      period_end: invoice.period_end,
+      note: invoice.note,
+    })
+  }
+
+  function cancelEditInvoice() {
+    setEditingInvoiceId(null)
+    setInvoiceForm(defaultInvoiceForm(billingYear))
+  }
 
   const saveAdvance = useMutation({
     mutationFn: () => {
@@ -206,8 +250,12 @@ export function BillingPage() {
         <TabsContent value="rechnungen" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Rechnung erfassen</CardTitle>
-              <CardDescription>Alle Kostenarten sind optional</CardDescription>
+              <CardTitle>{editingInvoiceId ? "Rechnung bearbeiten" : "Rechnung erfassen"}</CardTitle>
+              <CardDescription>
+                {editingInvoiceId
+                  ? "Änderungen speichern oder die Bearbeitung abbrechen."
+                  : "Alle Kostenarten sind optional"}
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
@@ -245,7 +293,25 @@ export function BillingPage() {
                 <Label>Notiz</Label>
                 <Textarea value={invoiceForm.note} onChange={(e) => setInvoiceForm({ ...invoiceForm, note: e.target.value })} />
               </div>
-              <Button onClick={() => createInvoice.mutate()} disabled={!invoiceForm.amount}>Hinzufügen</Button>
+              <div className="flex flex-wrap gap-2 md:col-span-3">
+                {editingInvoiceId ? (
+                  <>
+                    <Button
+                      onClick={() => updateInvoice.mutate()}
+                      disabled={!invoiceForm.amount || updateInvoice.isPending}
+                    >
+                      Speichern
+                    </Button>
+                    <Button variant="outline" onClick={cancelEditInvoice} disabled={updateInvoice.isPending}>
+                      Abbrechen
+                    </Button>
+                  </>
+                ) : (
+                  <Button onClick={() => createInvoice.mutate()} disabled={!invoiceForm.amount || createInvoice.isPending}>
+                    Hinzufügen
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
 
@@ -270,8 +336,22 @@ export function BillingPage() {
                       <TableCell>{formatEur(inv.amount)}</TableCell>
                       <TableCell>{inv.prorated_amount ? formatEur(inv.prorated_amount) : "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{inv.period_start} – {inv.period_end}</TableCell>
-                      <TableCell className="w-0">
-                        <Button variant="ghost" size="sm" onClick={() => deleteInvoice.mutate(inv.id)}>Löschen</Button>
+                      <TableCell className="w-0 space-x-1">
+                        <Button variant="outline" size="sm" onClick={() => startEditInvoice(inv)}>
+                          Bearbeiten
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            if (window.confirm("Rechnung wirklich löschen?")) {
+                              deleteInvoice.mutate(inv.id)
+                            }
+                          }}
+                          disabled={deleteInvoice.isPending}
+                        >
+                          Löschen
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
