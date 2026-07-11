@@ -180,3 +180,13 @@ def test_advance_payments_occupied_months(client):
     rows = client.get("/api/apartments/1/billing-years/2025/advance-payments").json()
     lease_ids = [item["lease_id"] for item in rows]
     assert outside_lease_id not in lease_ids
+
+
+def test_export_single_party_docx(client):
+    response = client.post("/api/apartments/1/billing-years/2025/export/1")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    assert len(response.content) > 1000
+    assert "attachment" in response.headers.get("content-disposition", "")

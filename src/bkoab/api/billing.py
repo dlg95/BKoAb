@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session, joinedload
 
 from bkoab.config import EXPORTS_DIR, LETTERHEADS_DIR
@@ -18,11 +18,75 @@ from bkoab.schemas import (
     SettlementPreview,
 )
 from bkoab.services.allocation import occupied_months_in_year
-from bkoab.services.docx_export import generate_settlement_docx
+from bkoab.services.docx_export import PersonPeriodLine, generate_settlement_docx, settlement_docx_bytes
+from bkoab.services.person_periods import ensure_default_person_periods
 from bkoab.services.proration import prorate_amount
 from bkoab.services.settlement import build_settlement_preview
 
 router = APIRouter(prefix="/api", tags=["billing"])
+
+
+def _settlement_filename(year: int, tenant_name: str) -> str:
+    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in tenant_name)
+    return f"Abrechnung_{year}_{safe_name}.docx"
+
+
+def _build_party_settlement_docx(db: Session, apartment_id: int, year: int, lease_id: int):
+    apartment = db.get(Apartment, apartment_id)
+    if not apartment:
+        raise HTTPException(404, "Wohnung nicht gefunden")
+
+    lease = (
+        db.query(Lease)
+        .join(Room)
+        .options(joinedload(Lease.person_periods), joinedload(Lease.tenant), joinedload(Lease.room))
+        .filter(Lease.id == lease_id, Room.apartment_id == apartment_id)
+        .first()
+    )
+    if not lease:
+        raise HTTPException(404, "Mietvertrag nicht gefunden")
+
+    ensure_default_person_periods(lease, db)
+    landlord = db.query(LandlordProfile).first()
+    preview = build_settlement_preview(db, apartment_id, year)
+    party = next((item for item in preview.parties if item.lease_id == lease_id), None)
+    if not party:
+        raise HTTPException(404, "Keine Abrechnung für diese Mietpartei im Abrechnungsjahr")
+
+    logo_path = None
+    if landlord and landlord.logo_filename:
+        candidate = LETTERHEADS_DIR / landlord.logo_filename
+        if candidate.exists():
+            logo_path = str(candidate)
+
+    person_period_lines = [
+        PersonPeriodLine(
+            valid_from=period.valid_from.isoformat(),
+            valid_to=period.valid_to.isoformat() if period.valid_to else None,
+            persons=period.persons,
+        )
+        for period in lease.person_periods
+    ]
+
+    doc = generate_settlement_docx(
+        preview=preview,
+        party=party,
+        landlord_name=landlord.name if landlord else apartment.account_holder or "Vermieter",
+        landlord_street=landlord.street if landlord else apartment.street,
+        landlord_city=landlord.city if landlord else apartment.city,
+        landlord_phone=landlord.phone if landlord else "",
+        landlord_email=landlord.email if landlord else "",
+        apartment_street=apartment.street,
+        apartment_city=apartment.city,
+        apartment_iban=apartment.iban,
+        apartment_account_holder=apartment.account_holder,
+        payment_reference_hint=apartment.payment_reference_hint,
+        payment_text_template=landlord.payment_text_template if landlord else "",
+        logo_path=logo_path,
+        person_period_lines=person_period_lines,
+    )
+    filename = _settlement_filename(year, party.tenant_name)
+    return doc, filename
 
 
 def _get_or_create_billing_year(db: Session, apartment_id: int, year: int) -> BillingYear:
@@ -224,46 +288,37 @@ def preview_settlement(apartment_id: int, year: int, db: Session = Depends(get_d
         raise HTTPException(404, str(exc)) from exc
 
 
+@router.post("/apartments/{apartment_id}/billing-years/{year}/export/{lease_id}")
+def export_settlement_for_party(apartment_id: int, year: int, lease_id: int, db: Session = Depends(get_db)):
+    doc, filename = _build_party_settlement_docx(db, apartment_id, year, lease_id)
+    content = settlement_docx_bytes(doc)
+
+    export_dir = EXPORTS_DIR / str(apartment_id) / str(year)
+    export_dir.mkdir(parents=True, exist_ok=True)
+    (export_dir / filename).write_bytes(content)
+
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/apartments/{apartment_id}/billing-years/{year}/export")
 def export_settlements(apartment_id: int, year: int, db: Session = Depends(get_db)):
     apartment = db.get(Apartment, apartment_id)
     if not apartment:
         raise HTTPException(404, "Wohnung nicht gefunden")
 
-    landlord = db.query(LandlordProfile).first()
     preview = build_settlement_preview(db, apartment_id, year)
-
     export_dir = EXPORTS_DIR / str(apartment_id) / str(year)
     export_dir.mkdir(parents=True, exist_ok=True)
 
     generated = []
     for party in preview.parties:
-        logo_path = None
-        if landlord and landlord.logo_filename:
-            candidate = LETTERHEADS_DIR / landlord.logo_filename
-            if candidate.exists():
-                logo_path = str(candidate)
-
-        doc = generate_settlement_docx(
-            preview=preview,
-            party=party,
-            landlord_name=landlord.name if landlord else apartment.account_holder or "Vermieter",
-            landlord_street=landlord.street if landlord else apartment.street,
-            landlord_city=landlord.city if landlord else apartment.city,
-            landlord_phone=landlord.phone if landlord else "",
-            landlord_email=landlord.email if landlord else "",
-            apartment_street=apartment.street,
-            apartment_city=apartment.city,
-            apartment_iban=apartment.iban,
-            apartment_account_holder=apartment.account_holder,
-            payment_reference_hint=apartment.payment_reference_hint,
-            payment_text_template=landlord.payment_text_template if landlord else "",
-            logo_path=logo_path,
-        )
-        safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in party.tenant_name)
-        filename = f"Abrechnung_{year}_{safe_name}.docx"
+        doc, filename = _build_party_settlement_docx(db, apartment_id, year, party.lease_id)
         path = export_dir / filename
-        doc.save(path)
+        path.write_bytes(settlement_docx_bytes(doc))
         generated.append({"lease_id": party.lease_id, "tenant_name": party.tenant_name, "filename": filename})
 
     return {"files": generated, "export_dir": str(export_dir)}

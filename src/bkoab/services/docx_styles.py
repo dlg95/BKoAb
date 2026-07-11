@@ -12,6 +12,11 @@ def format_eur(value: Decimal | float) -> str:
     return f"{formatted} €"
 
 
+def _zero_paragraph_spacing(paragraph) -> None:
+    paragraph.paragraph_format.space_before = Pt(0)
+    paragraph.paragraph_format.space_after = Pt(0)
+
+
 def add_styled_paragraph(
     doc,
     text: str,
@@ -19,10 +24,13 @@ def add_styled_paragraph(
     bold: bool = False,
     size: int = 10,
     align: int | None = None,
+    compact: bool = False,
 ):
     p = doc.add_paragraph()
     if align is not None:
         p.alignment = align
+    if compact:
+        _zero_paragraph_spacing(p)
     run = p.add_run(text)
     run.bold = bold
     run.font.size = Pt(size)
@@ -66,17 +74,39 @@ def set_cell_text(
     size: int = 9,
     align_right: bool = False,
     shade: bool = False,
+    compact: bool = False,
 ):
     cell.text = ""
     p = cell.paragraphs[0]
     if align_right:
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    if compact:
+        _zero_paragraph_spacing(p)
     run = p.add_run(text)
     run.bold = bold
     run.font.size = Pt(size)
     run.font.name = "Calibri"
     if shade:
         _set_cell_shading(cell, "F2F2F2")
+
+
+def add_cell_paragraph(
+    cell,
+    text: str,
+    *,
+    bold: bool = False,
+    size: int = 10,
+    align_right: bool = False,
+):
+    p = cell.add_paragraph()
+    if align_right:
+        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    _zero_paragraph_spacing(p)
+    run = p.add_run(text)
+    run.bold = bold
+    run.font.size = Pt(size)
+    run.font.name = "Calibri"
+    return p
 
 
 def set_table_borders(table):

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Loader2 } from "lucide-react"
 import { useParams } from "react-router-dom"
 import { useState } from "react"
 
@@ -15,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { api, formatEur, MONTHS } from "@/lib/api"
+import { pickExportDirectory, saveDocxBlob } from "@/lib/download"
 import { abbreviateTenantName } from "@/lib/utils"
 
 const INVOICE_TYPES = [
@@ -77,7 +79,10 @@ export function BillingPage() {
     note: "",
   })
   const [advanceDraft, setAdvanceDraft] = useState<Record<string, string>>({})
-  const [exportFiles, setExportFiles] = useState<{ filename: string; tenant_name: string }[]>([])
+  const [exportDirHandle, setExportDirHandle] = useState<FileSystemDirectoryHandle | null>(null)
+  const [exportDirName, setExportDirName] = useState<string | null>(null)
+  const [exportingLeaseId, setExportingLeaseId] = useState<number | null>(null)
+  const [exportStatus, setExportStatus] = useState<string | null>(null)
 
   const createInvoice = useMutation({
     mutationFn: () =>
@@ -109,10 +114,35 @@ export function BillingPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["advance", apartmentId, billingYear] }),
   })
 
-  const exportMutation = useMutation({
-    mutationFn: () => api.export(apartmentId, billingYear),
-    onSuccess: (data) => setExportFiles(data.files),
-  })
+  async function chooseExportDirectory() {
+    const handle = await pickExportDirectory()
+    if (!handle) return
+    setExportDirHandle(handle)
+    setExportDirName(handle.name)
+    setExportStatus(`Zielordner: ${handle.name}`)
+  }
+
+  async function exportPartyDocx(leaseId: number, tenantName: string) {
+    setExportingLeaseId(leaseId)
+    setExportStatus(`DOCX wird erstellt für ${tenantName}…`)
+    try {
+      const { blob, filename } = await api.exportPartyDocx(apartmentId, billingYear, leaseId, tenantName)
+      const result = await saveDocxBlob(blob, filename, exportDirHandle)
+      if (result === "cancelled") {
+        setExportStatus("Speichern abgebrochen.")
+        return
+      }
+      if (result === "directory" && exportDirName) {
+        setExportStatus(`${filename} gespeichert in ${exportDirName}.`)
+        return
+      }
+      setExportStatus(`${filename} gespeichert.`)
+    } catch (error) {
+      setExportStatus(error instanceof Error ? error.message : "Export fehlgeschlagen.")
+    } finally {
+      setExportingLeaseId(null)
+    }
+  }
 
   function getAdvanceValue(leaseId: number, month: number) {
     const key = `${leaseId}-${month}`
@@ -314,12 +344,28 @@ export function BillingPage() {
         </TabsContent>
 
         <TabsContent value="vorschau" className="space-y-4">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button onClick={() => refetchPreview()}>Vorschau berechnen</Button>
-            <Button onClick={() => exportMutation.mutate()} disabled={exportMutation.isPending}>
-              DOCX exportieren
+            <Button variant="outline" onClick={() => chooseExportDirectory()}>
+              Zielordner wählen
             </Button>
+            {exportDirName ? (
+              <span className="text-sm text-muted-foreground">Speicherort: {exportDirName}</span>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                Ohne Zielordner öffnet sich beim Export der Speichern-Dialog.
+              </span>
+            )}
           </div>
+
+          {exportStatus ? (
+            <Card>
+              <CardContent className="flex items-center gap-2 pt-6 text-sm">
+                {exportingLeaseId !== null ? <Loader2 className="size-4 animate-spin" /> : null}
+                {exportStatus}
+              </CardContent>
+            </Card>
+          ) : null}
 
           {preview?.warnings?.length ? (
             <Card>
@@ -332,11 +378,28 @@ export function BillingPage() {
           {preview?.parties.map((party) => (
             <Card key={party.lease_id}>
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <CardTitle>{party.tenant_name} — {party.room_name}</CardTitle>
-                  <Badge variant={party.balance_type === "nachzahlung" ? "destructive" : party.balance_type === "guthaben" ? "default" : "secondary"}>
-                    {party.balance_type === "nachzahlung" ? "Nachzahlung" : party.balance_type === "guthaben" ? "Guthaben" : "Ausgeglichen"} {formatEur(Math.abs(parseFloat(party.balance)))}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={exportingLeaseId !== null}
+                      onClick={() => exportPartyDocx(party.lease_id, party.tenant_name)}
+                    >
+                      {exportingLeaseId === party.lease_id ? (
+                        <>
+                          <Loader2 className="mr-2 size-4 animate-spin" />
+                          Erstellt DOCX…
+                        </>
+                      ) : (
+                        "DOCX erstellen"
+                      )}
+                    </Button>
+                    <Badge variant={party.balance_type === "nachzahlung" ? "destructive" : party.balance_type === "guthaben" ? "default" : "secondary"}>
+                      {party.balance_type === "nachzahlung" ? "Nachzahlung" : party.balance_type === "guthaben" ? "Guthaben" : "Ausgeglichen"} {formatEur(Math.abs(parseFloat(party.balance)))}
+                    </Badge>
+                  </div>
                 </div>
                 <CardDescription>Kopfmonate: {parseFloat(party.head_months).toFixed(2)}</CardDescription>
               </CardHeader>
@@ -372,25 +435,6 @@ export function BillingPage() {
               </CardContent>
             </Card>
           ))}
-
-          {exportFiles.length > 0 && (
-            <Card>
-              <CardHeader><CardTitle>Exportierte Dateien</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                {exportFiles.map((f) => (
-                  <div key={f.filename}>
-                    <a
-                      className="text-primary underline"
-                      href={`/api/apartments/${apartmentId}/billing-years/${billingYear}/export/${f.filename}`}
-                      download
-                    >
-                      {f.filename} ({f.tenant_name})
-                    </a>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
 
           {preview && (
             <p className="text-sm text-muted-foreground">
