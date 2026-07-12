@@ -23,7 +23,9 @@ export type Apartment = {
   city: string
   total_area_sqm: string | null
   living_area_sqm: string | null
-  rooms: { id: number; name: string; area_sqm: string | null }[]
+  mea_share: string | null
+  consumption_amount: string | null
+  rooms: { id: number; name: string; area_sqm: string | null; consumption_amount: string | null }[]
 }
 
 export type Property = {
@@ -35,7 +37,14 @@ export type Property = {
   common_area_sqm: string | null
   property_type: string
   property_type_label: string
-  units: { id: number; name: string; living_area_sqm: string | null; room_count: number }[]
+  units: {
+    id: number
+    name: string
+    living_area_sqm: string | null
+    mea_share: string | null
+    consumption_amount: string | null
+    room_count: number
+  }[]
 }
 
 export type Lease = {
@@ -135,10 +144,10 @@ export const DEFAULT_ALLOCATION_BY_TYPE: Record<string, string> = {
   hausmeister: "flaeche_qm",
   aufzug: "flaeche_qm",
   versicherung: "flaeche_qm",
-  schornsteinfeger: "flaeche_qm",
-  wasser_abwasser: "flaeche_qm",
+  schornsteinfeger: "wohneinheiten",
+  wasser_abwasser: "direktzuordnung",
   muell: "flaeche_qm",
-  kabel: "flaeche_qm",
+  kabel: "wohneinheiten",
   heizung_gebaeude: "flaeche_qm",
 }
 
@@ -170,7 +179,7 @@ export const api = {
       body: JSON.stringify({ name, area_sqm: area_sqm || null }),
     }),
   deleteRoom: (roomId: number) => request<void>(`/rooms/${roomId}`, { method: "DELETE" }),
-  updateRoom: (roomId: number, data: { name?: string; area_sqm?: string | null }) =>
+  updateRoom: (roomId: number, data: { name?: string; area_sqm?: string | null; consumption_amount?: string | null }) =>
     request<{ id: number; name: string; area_sqm: string | null }>(`/rooms/${roomId}`, {
       method: "PUT",
       body: JSON.stringify(data),

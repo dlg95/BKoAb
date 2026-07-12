@@ -111,9 +111,22 @@ def _add_head_months_explanation(
     doc.add_paragraph()
 
 
+def _allocation_quote_label(key: AllocationKey) -> str:
+    return {
+        AllocationKey.PERSONENMONATE: "PM",
+        AllocationKey.FLAECHE_QM: "m²",
+        AllocationKey.WOHNEINHEITEN: "WE",
+        AllocationKey.DIREKTZUORDNUNG: "DZ",
+        AllocationKey.MEA: "MEA",
+    }.get(key, key.value)
+
+
 def _format_numerator(line, key: AllocationKey) -> str:
     if key == AllocationKey.PERSONENMONATE:
         return f"{line.party_numerator:.2f}"
+    if key in (AllocationKey.WOHNEINHEITEN, AllocationKey.DIREKTZUORDNUNG, AllocationKey.MEA):
+        if line.party_denominator == line.party_numerator and line.party_denominator > 0:
+            return "gleich"
     if line.party_denominator == line.party_numerator and line.party_denominator > 0:
         return "gleich"
     return f"{line.party_numerator:.2f}"
@@ -150,7 +163,7 @@ def _add_cost_lines_table(doc: Document, *, party: PartySettlement) -> None:
 
     for line in party.cost_lines:
         key = line.allocation_key
-        quote_label = "PM" if key == AllocationKey.PERSONENMONATE else "m²"
+        quote_label = _allocation_quote_label(key)
         row = table.add_row().cells
         values = [
             (line.label, False),

@@ -25,8 +25,12 @@ from bkoab.schemas import (
 )
 from bkoab.services.allocation import (
     UnitArea,
+    UnitShareData,
     compute_area_shares,
+    compute_direct_assignment_shares,
+    compute_equal_unit_shares,
     compute_head_months,
+    compute_mea_shares,
     compute_room_area_shares,
     occupied_months_in_year,
 )
@@ -82,9 +86,6 @@ def _process_invoices(invoices: list[Invoice], year: int, warnings: list[str]) -
     return processed
 
 
-def _property_units(db: Session, property_id: int) -> list[Apartment]:
-    return db.query(Apartment).filter(Apartment.property_id == property_id).all()
-
 
 def _unit_pm_share(
     prorated: Decimal,
@@ -119,6 +120,171 @@ def _unit_area_share(
             return Decimal("1"), property_total_area_sqm, _money(prorated / Decimal(count))
         return Decimal("1"), Decimal(count), _money(prorated / Decimal(count))
     return Decimal("0"), property_total_area_sqm or Decimal(count), Decimal("0")
+
+
+def _unit_equal_share(
+    prorated: Decimal,
+    lease_id: int,
+    active_lease_ids: list[int],
+) -> tuple[Decimal, Decimal, Decimal]:
+    count = len(active_lease_ids)
+    if count <= 0 or lease_id not in active_lease_ids:
+        return Decimal("0"), Decimal(count), Decimal("0")
+    numerator, denominator, ratio = compute_equal_unit_shares(count, True)
+    return numerator, denominator, _money(prorated * ratio)
+
+
+def _unit_direct_assignment_share_by_room(
+    prorated: Decimal,
+    lease_id: int,
+    leases_db: list[Lease],
+    room_consumption: dict[int, Decimal],
+) -> tuple[Decimal, Decimal, Decimal]:
+    lease = next((lease for lease in leases_db if lease.id == lease_id), None)
+    if not lease:
+        return Decimal("0"), Decimal("0"), Decimal("0")
+    numerator, denominator, ratio = compute_direct_assignment_shares(room_consumption, lease.room_id)
+    return numerator, denominator, _money(prorated * ratio)
+
+
+def _apartment_head_months(
+    apartment_id: int,
+    property_units: list[Apartment],
+    property_lease_head_months: dict[int, Decimal],
+) -> Decimal:
+    apartment_lease_ids: set[int] = set()
+    for unit in property_units:
+        if unit.id != apartment_id:
+            continue
+        for room in unit.rooms:
+            for lease in room.leases:
+                apartment_lease_ids.add(lease.id)
+    return sum(
+        (property_lease_head_months.get(lease_id, Decimal("0")) for lease_id in apartment_lease_ids),
+        Decimal("0"),
+    )
+
+
+def _property_unit_share(
+    inv: ProcessedInvoice,
+    apartment_id: int,
+    property_units: list[Apartment],
+    unit_area: Decimal,
+    total_property_area: Decimal | None,
+    apartment_head_months: Decimal,
+    property_total_head_months: Decimal,
+    warnings: list[str],
+) -> tuple[Decimal, Decimal, Decimal, AllocationKeySchema]:
+    """Compute this apartment's share of a property-level invoice."""
+    unit_count = len(property_units)
+
+    if inv.allocation_key == AllocationKey.FLAECHE_QM:
+        unit_areas = [
+            UnitArea(unit_id=u.id, living_area_sqm=_decimal_or_zero(u.living_area_sqm))
+            for u in property_units
+        ]
+        area, total, ratio = compute_area_shares(unit_areas, apartment_id, total_property_area)
+        return area, total, _money(inv.total_prorated * ratio), AllocationKeySchema.FLAECHE_QM
+
+    if inv.allocation_key == AllocationKey.WOHNEINHEITEN:
+        is_member = any(u.id == apartment_id for u in property_units)
+        numerator, denominator, ratio = compute_equal_unit_shares(unit_count, is_member)
+        if ratio <= 0:
+            warnings.append(f"{inv.label}: Keine Wohneinheiten für gleichmäßige Verteilung")
+            return numerator, denominator, Decimal("0"), AllocationKeySchema.WOHNEINHEITEN
+        return numerator, denominator, _money(inv.total_prorated * ratio), AllocationKeySchema.WOHNEINHEITEN
+
+    if inv.allocation_key == AllocationKey.DIREKTZUORDNUNG:
+        amounts = {u.id: _decimal_or_zero(u.consumption_amount) for u in property_units}
+        numerator, denominator, ratio = compute_direct_assignment_shares(amounts, apartment_id)
+        if ratio <= 0:
+            warnings.append(f"{inv.label}: Keine Verbrauchswerte für Direktzuordnung")
+            return numerator, denominator, Decimal("0"), AllocationKeySchema.DIREKTZUORDNUNG
+        return numerator, denominator, _money(inv.total_prorated * ratio), AllocationKeySchema.DIREKTZUORDNUNG
+
+    if inv.allocation_key == AllocationKey.MEA:
+        units_data = [
+            UnitShareData(unit_id=u.id, mea_share=_decimal_or_zero(u.mea_share), consumption_amount=Decimal("0"))
+            for u in property_units
+        ]
+        numerator, denominator, ratio = compute_mea_shares(units_data, apartment_id)
+        if ratio <= 0:
+            warnings.append(f"{inv.label}: Keine Miteigentumsanteile hinterlegt")
+            return numerator, denominator, Decimal("0"), AllocationKeySchema.MEA
+        return numerator, denominator, _money(inv.total_prorated * ratio), AllocationKeySchema.MEA
+
+    if inv.allocation_key == AllocationKey.PERSONENMONATE:
+        if property_total_head_months <= 0 or apartment_head_months <= 0:
+            warnings.append(f"{inv.label}: Keine Personenmonate für Gebäudeverteilung")
+            return apartment_head_months, property_total_head_months, Decimal("0"), AllocationKeySchema.PERSONENMONATE
+        ratio = (apartment_head_months / property_total_head_months).quantize(
+            Decimal("0.0001"), rounding=ROUND_HALF_UP
+        )
+        return (
+            apartment_head_months,
+            property_total_head_months,
+            _money(inv.total_prorated * ratio),
+            AllocationKeySchema.PERSONENMONATE,
+        )
+
+    # Fallback to area
+    unit_areas = [
+        UnitArea(unit_id=u.id, living_area_sqm=_decimal_or_zero(u.living_area_sqm))
+        for u in property_units
+    ]
+    area, total, ratio = compute_area_shares(unit_areas, apartment_id, total_property_area)
+    return area, total, _money(inv.total_prorated * ratio), AllocationKeySchema.FLAECHE_QM
+
+
+def _lease_split_key_for_property_invoice(allocation_key: AllocationKey) -> AllocationKey:
+    if allocation_key == AllocationKey.FLAECHE_QM:
+        return AllocationKey.FLAECHE_QM
+    if allocation_key == AllocationKey.DIREKTZUORDNUNG:
+        return AllocationKey.DIREKTZUORDNUNG
+    if allocation_key == AllocationKey.WOHNEINHEITEN:
+        return AllocationKey.WOHNEINHEITEN
+    return AllocationKey.PERSONENMONATE
+
+
+def _split_unit_share_among_leases(
+    unit_share: Decimal,
+    lease_id: int,
+    allocation_key: AllocationKey,
+    party_head_months: dict[int, Decimal],
+    total_head_months: Decimal,
+    active_lease_ids: list[int],
+    lease_room_areas: dict[int, Decimal],
+    leases_db: list[Lease],
+    room_consumption: dict[int, Decimal],
+    property_total_area: Decimal | None,
+    *,
+    within_apartment: bool = False,
+) -> tuple[Decimal, Decimal, Decimal]:
+    """Split an apartment's share of a cost among active leases."""
+    apartment_head_months = sum(party_head_months.values(), Decimal("0"))
+    pm_total = apartment_head_months if within_apartment else total_head_months
+
+    if allocation_key == AllocationKey.PERSONENMONATE:
+        return _unit_pm_share(unit_share, lease_id, party_head_months, pm_total)
+
+    if allocation_key == AllocationKey.WOHNEINHEITEN:
+        return _unit_equal_share(unit_share, lease_id, active_lease_ids)
+
+    if allocation_key == AllocationKey.DIREKTZUORDNUNG:
+        return _unit_direct_assignment_share_by_room(
+            unit_share, lease_id, leases_db, room_consumption
+        )
+
+    if allocation_key == AllocationKey.MEA:
+        return _unit_pm_share(unit_share, lease_id, party_head_months, pm_total)
+
+    return _unit_area_share(
+        unit_share,
+        lease_id,
+        active_lease_ids,
+        lease_room_areas,
+        None if within_apartment else property_total_area,
+    )
 
 
 def build_settlement_preview(db: Session, apartment_id: int, year: int) -> SettlementPreview:
@@ -168,6 +334,9 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
     property_share_ratio = Decimal("0")
     processed_property: list[ProcessedInvoice] = []
     property_total_area: Decimal | None = None
+    property_units: list[Apartment] = []
+    property_lease_head_months: dict[int, Decimal] = {}
+    property_total_head_months = Decimal("0")
 
     if apartment.property_id:
         prop = db.get(Property, apartment.property_id)
@@ -175,7 +344,23 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
         if property_total_area <= 0:
             property_total_area = None
 
-        property_units = _property_units(db, apartment.property_id)
+        property_units = (
+            db.query(Apartment)
+            .options(joinedload(Apartment.rooms).joinedload(Room.leases).joinedload(Lease.person_periods))
+            .filter(Apartment.property_id == apartment.property_id)
+            .all()
+        )
+        for unit in property_units:
+            unit_lease_periods = []
+            unit_room_ids = [room.id for room in unit.rooms]
+            for room in unit.rooms:
+                for lease in room.leases:
+                    ensure_default_person_periods(lease, db)
+                    unit_lease_periods.append(lease_to_allocation_period(lease))
+            unit_party_hm, _, _ = compute_head_months(unit_lease_periods, unit_room_ids, year)
+            property_lease_head_months.update(unit_party_hm)
+        property_total_head_months = sum(property_lease_head_months.values(), Decimal("0"))
+
         unit_areas = [
             UnitArea(unit_id=u.id, living_area_sqm=_decimal_or_zero(u.living_area_sqm))
             for u in property_units
@@ -226,13 +411,21 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
     active_lease_ids = list(active_leases.keys())
 
     lease_room_areas: dict[int, Decimal] = {}
+    room_consumption: dict[int, Decimal] = {}
     for lease in leases_db:
         if lease.id not in active_lease_ids:
             continue
         room = room_by_id.get(lease.room_id)
         lease_room_areas[lease.id] = _decimal_or_zero(room.area_sqm if room else None)
+        if room:
+            room_consumption[room.id] = _decimal_or_zero(room.consumption_amount)
+
+    apartment_head_months = _apartment_head_months(
+        apartment_id, property_units, property_lease_head_months
+    )
 
     parties: list[PartySettlement] = []
+    mea_warnings: set[str] = set()
 
     for lease_id, lease_info in active_leases.items():
         hm = party_head_months.get(lease_id, Decimal("0"))
@@ -244,6 +437,31 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
                 numerator, denominator, share = _unit_pm_share(
                     inv.total_prorated, lease_id, party_head_months, total_head_months
                 )
+                display_key = AllocationKeySchema.PERSONENMONATE
+            elif inv.allocation_key == AllocationKey.FLAECHE_QM:
+                numerator, denominator, share = _unit_area_share(
+                    inv.total_prorated,
+                    lease_id,
+                    active_lease_ids,
+                    lease_room_areas,
+                    property_total_area,
+                )
+                display_key = AllocationKeySchema.FLAECHE_QM
+            elif inv.allocation_key == AllocationKey.WOHNEINHEITEN:
+                numerator, denominator, share = _unit_equal_share(
+                    inv.total_prorated, lease_id, active_lease_ids
+                )
+                display_key = AllocationKeySchema.WOHNEINHEITEN
+            elif inv.allocation_key == AllocationKey.DIREKTZUORDNUNG:
+                numerator, denominator, share = _unit_direct_assignment_share_by_room(
+                    inv.total_prorated, lease_id, leases_db, room_consumption
+                )
+                display_key = AllocationKeySchema.DIREKTZUORDNUNG
+            elif inv.allocation_key == AllocationKey.MEA:
+                if not apartment.property_id:
+                    mea_warnings.add(f"{inv.label}: MEA-Schlüssel gilt nur auf Gebäudeebene")
+                numerator, denominator, share = Decimal("0"), Decimal("0"), Decimal("0")
+                display_key = AllocationKeySchema.MEA
             else:
                 numerator, denominator, share = _unit_area_share(
                     inv.total_prorated,
@@ -252,11 +470,13 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
                     lease_room_areas,
                     property_total_area,
                 )
+                display_key = AllocationKeySchema.FLAECHE_QM
+
             cost_lines.append(
                 CostLineItem(
                     invoice_id=inv.id,
                     label=inv.label,
-                    allocation_key=AllocationKeySchema(inv.allocation_key.value),
+                    allocation_key=display_key,
                     total_prorated=inv.total_prorated,
                     party_numerator=numerator,
                     party_denominator=denominator,
@@ -267,20 +487,41 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
             total_costs += share
 
         for inv in processed_property:
-            if property_share_ratio <= 0:
+            prop_numerator, prop_denominator, unit_share, prop_key = _property_unit_share(
+                inv,
+                apartment_id,
+                property_units,
+                unit_area,
+                total_property_area,
+                apartment_head_months,
+                property_total_head_months,
+                warnings,
+            )
+            if unit_share <= 0:
                 continue
-            unit_share = _money(inv.total_prorated * property_share_ratio)
-            numerator, denominator, share = _unit_pm_share(
-                unit_share, lease_id, party_head_months, total_head_months
+
+            lease_split_key = _lease_split_key_for_property_invoice(inv.allocation_key)
+            numerator, denominator, share = _split_unit_share_among_leases(
+                unit_share,
+                lease_id,
+                lease_split_key,
+                party_head_months,
+                total_head_months,
+                active_lease_ids,
+                lease_room_areas,
+                leases_db,
+                room_consumption,
+                property_total_area,
+                within_apartment=True,
             )
             cost_lines.append(
                 CostLineItem(
                     invoice_id=inv.id,
                     label=f"{inv.label} (Gebäude)",
-                    allocation_key=AllocationKeySchema.FLAECHE_QM,
+                    allocation_key=prop_key,
                     total_prorated=inv.total_prorated,
-                    party_numerator=unit_area,
-                    party_denominator=total_property_area or Decimal("0"),
+                    party_numerator=prop_numerator,
+                    party_denominator=prop_denominator,
                     party_share=share,
                     has_document=inv.has_document,
                 )
@@ -305,6 +546,7 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
         )
 
     parties.sort(key=lambda p: p.tenant_name)
+    warnings.extend(sorted(mea_warnings))
 
     return SettlementPreview(
         apartment_id=apartment_id,

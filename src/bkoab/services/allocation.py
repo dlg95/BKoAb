@@ -94,6 +94,44 @@ class UnitArea:
     living_area_sqm: Decimal
 
 
+@dataclass
+class UnitShareData:
+    unit_id: int
+    mea_share: Decimal
+    consumption_amount: Decimal
+
+
+def compute_equal_unit_shares(unit_count: int, is_member: bool) -> tuple[Decimal, Decimal, Decimal]:
+    """Returns (numerator, denominator, share_ratio) for equal split among units."""
+    count = Decimal(unit_count)
+    if count <= 0 or not is_member:
+        return Decimal("0"), count, Decimal("0")
+    ratio = (Decimal("1") / count).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    return Decimal("1"), count, ratio
+
+
+def compute_mea_shares(units: list[UnitShareData], target_unit_id: int) -> tuple[Decimal, Decimal, Decimal]:
+    unit_mea = next((u.mea_share for u in units if u.unit_id == target_unit_id), Decimal("0"))
+    total = sum((u.mea_share for u in units if u.mea_share > 0), Decimal("0"))
+    if total <= 0 or unit_mea <= 0:
+        return unit_mea, total, Decimal("0")
+    ratio = (unit_mea / total).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    return unit_mea, total, ratio
+
+
+def compute_direct_assignment_shares(
+    amounts: dict[int, Decimal],
+    target_id: int,
+) -> tuple[Decimal, Decimal, Decimal]:
+    """Direct assignment by consumption or other per-unit amount. target_id = room_id or unit_id."""
+    value = amounts.get(target_id, Decimal("0"))
+    total = sum((amount for amount in amounts.values() if amount > 0), Decimal("0"))
+    if total <= 0 or value <= 0:
+        return value, total, Decimal("0")
+    ratio = (value / total).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    return value, total, ratio
+
+
 def compute_area_shares(
     units: list[UnitArea],
     target_unit_id: int,

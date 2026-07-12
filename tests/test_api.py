@@ -329,6 +329,33 @@ def test_mfh_property_invoice_without_units_or_leases(client):
     assert data["billing_year_id"] is None
 
 
+def test_get_property_billing_year_get_or_create(client):
+    prop = client.post(
+        "/api/properties",
+        json={
+            "name": "Auto Jahr",
+            "street": "Test 1",
+            "city": "12345 Berlin",
+            "total_area_sqm": "100",
+        },
+    )
+    property_id = prop.json()["id"]
+    response = client.get(f"/api/properties/{property_id}/billing-years/2025")
+    assert response.status_code == 200
+    assert response.json()["year"] == 2025
+
+    invoice = client.post(
+        f"/api/properties/{property_id}/billing-years/2025/invoices",
+        json={
+            "invoice_type": "grundsteuer",
+            "amount": "100",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+        },
+    )
+    assert invoice.status_code == 201
+
+
 def test_mfh_property_invoice_distribution(client):
     prop = client.post(
         "/api/properties",
@@ -406,3 +433,128 @@ def test_mfh_property_invoice_distribution(client):
     assert share2 > 0
     assert share1 < share2
     assert share1 / share2 == pytest.approx(85 / 95, rel=0.05)
+
+
+def test_wohneinheiten_allocation_on_wg(client):
+    client.post(
+        "/api/apartments/1/billing-years/2025/invoices",
+        json={
+            "invoice_type": "kabel",
+            "allocation_key": "wohneinheiten",
+            "label": "Kabel",
+            "amount": "240",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+        },
+    )
+    preview = client.get("/api/apartments/1/billing-years/2025/preview").json()
+    line = next(item for item in preview["parties"][0]["cost_lines"] if item["label"].startswith("Kabel"))
+    assert line["allocation_key"] == "wohneinheiten"
+    assert float(line["party_share"]) == pytest.approx(240.0)
+
+
+def test_direktzuordnung_allocation_on_wg(client):
+    rooms = client.get("/api/apartments/1").json()["rooms"]
+    client.put(f"/api/rooms/{rooms[0]['id']}", json={"consumption_amount": "30"})
+    client.put(f"/api/rooms/{rooms[1]['id']}", json={"consumption_amount": "70"})
+    client.post(
+        "/api/apartments/1/billing-years/2025/invoices",
+        json={
+            "invoice_type": "wasser_abwasser",
+            "allocation_key": "direktzuordnung",
+            "label": "Wasser",
+            "amount": "100",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+        },
+    )
+    client.post(
+        "/api/apartments/1/leases",
+        json={
+            "tenant_name": "Bernd",
+            "room_id": rooms[1]["id"],
+            "persons": 1,
+            "move_in": "2025-01-01",
+            "move_out": "2025-12-31",
+        },
+    )
+    preview = client.get("/api/apartments/1/billing-years/2025/preview").json()
+    anna = next(p for p in preview["parties"] if p["tenant_name"] == "Anna")
+    bernd = next(p for p in preview["parties"] if p["tenant_name"] == "Bernd")
+    water_anna = next(item for item in anna["cost_lines"] if item["label"].startswith("Wasser"))
+    water_bernd = next(item for item in bernd["cost_lines"] if item["label"].startswith("Wasser"))
+    assert water_anna["allocation_key"] == "direktzuordnung"
+    assert float(water_anna["party_share"]) == pytest.approx(30.0)
+    assert float(water_bernd["party_share"]) == pytest.approx(70.0)
+
+
+def test_mea_property_invoice_distribution(client):
+    prop = client.post(
+        "/api/properties",
+        json={
+            "name": "WEG Haus",
+            "street": "WEG 1",
+            "city": "12345 Berlin",
+            "total_area_sqm": "400",
+            "property_type": "weg",
+        },
+    )
+    property_id = prop.json()["id"]
+    unit1 = client.post(
+        f"/api/properties/{property_id}/units",
+        json={"name": "Whg 1", "living_area_sqm": "80"},
+    )
+    unit2 = client.post(
+        f"/api/properties/{property_id}/units",
+        json={"name": "Whg 2", "living_area_sqm": "120"},
+    )
+    apt1_id = unit1.json()["id"]
+    apt2_id = unit2.json()["id"]
+    client.put(f"/api/apartments/{apt1_id}", json={"mea_share": "300"})
+    client.put(f"/api/apartments/{apt2_id}", json={"mea_share": "500"})
+
+    client.post(f"/api/apartments/{apt1_id}/billing-years", json={"year": 2025})
+    client.post(f"/api/apartments/{apt2_id}/billing-years", json={"year": 2025})
+    client.post(f"/api/properties/{property_id}/billing-years", json={"year": 2025})
+
+    client.post(
+        f"/api/properties/{property_id}/billing-years/2025/invoices",
+        json={
+            "invoice_type": "weg",
+            "allocation_key": "mea",
+            "amount": "800",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+            "label": "WEG",
+        },
+    )
+
+    room1 = client.post(f"/api/apartments/{apt1_id}/rooms", json={"name": "Wohnen"}).json()
+    room2 = client.post(f"/api/apartments/{apt2_id}/rooms", json={"name": "Wohnen"}).json()
+    client.post(
+        f"/api/apartments/{apt1_id}/leases",
+        json={
+            "tenant_name": "A",
+            "room_id": room1["id"],
+            "persons": 1,
+            "move_in": "2025-01-01",
+            "move_out": "2025-12-31",
+        },
+    )
+    client.post(
+        f"/api/apartments/{apt2_id}/leases",
+        json={
+            "tenant_name": "B",
+            "room_id": room2["id"],
+            "persons": 1,
+            "move_in": "2025-01-01",
+            "move_out": "2025-12-31",
+        },
+    )
+
+    preview1 = client.get(f"/api/apartments/{apt1_id}/billing-years/2025/preview").json()
+    preview2 = client.get(f"/api/apartments/{apt2_id}/billing-years/2025/preview").json()
+    share1 = float(preview1["parties"][0]["total_costs"])
+    share2 = float(preview2["parties"][0]["total_costs"])
+    assert share1 == pytest.approx(300.0, rel=0.02)
+    assert share2 == pytest.approx(500.0, rel=0.02)

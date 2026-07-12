@@ -38,7 +38,17 @@ def _apartment_to_read(apartment: Apartment) -> ApartmentRead:
         city=apartment.city,
         total_area_sqm=total_area,
         living_area_sqm=apartment.living_area_sqm,
-        rooms=[RoomRead(id=r.id, name=r.name, area_sqm=r.area_sqm) for r in apartment.rooms],
+        mea_share=apartment.mea_share,
+        consumption_amount=apartment.consumption_amount,
+        rooms=[
+            RoomRead(
+                id=r.id,
+                name=r.name,
+                area_sqm=r.area_sqm,
+                consumption_amount=r.consumption_amount,
+            )
+            for r in apartment.rooms
+        ],
     )
 
 

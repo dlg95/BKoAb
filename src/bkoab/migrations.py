@@ -80,6 +80,15 @@ def run_migrations(engine: Engine) -> None:
             cols = _column_names(engine, "rooms")
             if "area_sqm" not in cols:
                 conn.execute(text("ALTER TABLE rooms ADD COLUMN area_sqm NUMERIC(10, 2)"))
+            if "consumption_amount" not in cols:
+                conn.execute(text("ALTER TABLE rooms ADD COLUMN consumption_amount NUMERIC(12, 4)"))
+
+        if _table_exists(engine, "apartments"):
+            cols = _column_names(engine, "apartments")
+            if "mea_share" not in cols:
+                conn.execute(text("ALTER TABLE apartments ADD COLUMN mea_share NUMERIC(10, 4)"))
+            if "consumption_amount" not in cols:
+                conn.execute(text("ALTER TABLE apartments ADD COLUMN consumption_amount NUMERIC(12, 4)"))
 
         _backfill_properties(conn, engine)
 

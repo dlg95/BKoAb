@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { api } from "@/lib/api"
 import { ALLOCATION_PER_INVOICE_HINT, BILLING_LABELS, TOP_UNIT_STAMMDATEN } from "@/lib/billing-labels"
 
-type UnitDraft = { name: string; living_area_sqm: string }
+type UnitDraft = { name: string; living_area_sqm: string; mea_share: string; consumption_amount: string }
 
 export function PropertyDetailPage() {
   const { id } = useParams()
@@ -47,7 +47,12 @@ export function PropertyDetailPage() {
         Object.fromEntries(
           property.units.map((unit) => [
             unit.id,
-            { name: unit.name, living_area_sqm: unit.living_area_sqm || "" },
+            {
+              name: unit.name,
+              living_area_sqm: unit.living_area_sqm || "",
+              mea_share: unit.mea_share || "",
+              consumption_amount: unit.consumption_amount || "",
+            },
           ]),
         ),
       )
@@ -87,6 +92,8 @@ export function PropertyDetailPage() {
       return api.updateApartment(unitId, {
         name: draft.name,
         living_area_sqm: draft.living_area_sqm || null,
+        mea_share: draft.mea_share || null,
+        consumption_amount: draft.consumption_amount || null,
       })
     },
     onSuccess: () => {
@@ -161,12 +168,19 @@ export function PropertyDetailPage() {
               <TableRow>
                 <TableHead>Bezeichnung</TableHead>
                 <TableHead>Fläche (m²)</TableHead>
+                <TableHead>MEA</TableHead>
+                <TableHead>Verbrauch</TableHead>
                 <TableHead className="w-32" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {property.units.map((unit) => {
-                const draft = unitDrafts[unit.id] ?? { name: unit.name, living_area_sqm: unit.living_area_sqm || "" }
+                const draft = unitDrafts[unit.id] ?? {
+                  name: unit.name,
+                  living_area_sqm: unit.living_area_sqm || "",
+                  mea_share: unit.mea_share || "",
+                  consumption_amount: unit.consumption_amount || "",
+                }
                 return (
                   <TableRow key={unit.id}>
                     <TableCell>
@@ -192,6 +206,34 @@ export function PropertyDetailPage() {
                           })
                         }
                         className="w-32"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={draft.mea_share}
+                        onChange={(e) =>
+                          setUnitDrafts({
+                            ...unitDrafts,
+                            [unit.id]: { ...draft, mea_share: e.target.value },
+                          })
+                        }
+                        className="w-24"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={draft.consumption_amount}
+                        onChange={(e) =>
+                          setUnitDrafts({
+                            ...unitDrafts,
+                            [unit.id]: { ...draft, consumption_amount: e.target.value },
+                          })
+                        }
+                        className="w-24"
                       />
                     </TableCell>
                     <TableCell>

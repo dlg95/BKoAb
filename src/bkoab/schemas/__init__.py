@@ -19,6 +19,9 @@ class PropertyType(str, Enum):
 class AllocationKey(str, Enum):
     PERSONENMONATE = "personenmonate"
     FLAECHE_QM = "flaeche_qm"
+    WOHNEINHEITEN = "wohneinheiten"
+    DIREKTZUORDNUNG = "direktzuordnung"
+    MEA = "mea"
 
 
 class AllocationScope(str, Enum):
@@ -63,6 +66,9 @@ INVOICE_TYPE_LABELS = {
 ALLOCATION_KEY_LABELS = {
     AllocationKey.PERSONENMONATE: "Personenmonate",
     AllocationKey.FLAECHE_QM: "Fläche (m²)",
+    AllocationKey.WOHNEINHEITEN: "Wohneinheiten (gleich)",
+    AllocationKey.DIREKTZUORDNUNG: "Direktzuordnung (z.B. Verbrauch)",
+    AllocationKey.MEA: "Miteigentumsanteile",
 }
 
 PROPERTY_TYPE_LABELS = {
@@ -81,10 +87,10 @@ DEFAULT_ALLOCATION_BY_INVOICE_TYPE: dict[InvoiceType, AllocationKey] = {
     InvoiceType.HAUSMEISTER: AllocationKey.FLAECHE_QM,
     InvoiceType.AUFZUG: AllocationKey.FLAECHE_QM,
     InvoiceType.VERSICHERUNG: AllocationKey.FLAECHE_QM,
-    InvoiceType.SCHORNSTEINFEGER: AllocationKey.FLAECHE_QM,
-    InvoiceType.WASSER_ABWASSER: AllocationKey.FLAECHE_QM,
+    InvoiceType.SCHORNSTEINFEGER: AllocationKey.WOHNEINHEITEN,
+    InvoiceType.WASSER_ABWASSER: AllocationKey.DIREKTZUORDNUNG,
     InvoiceType.MUELL: AllocationKey.FLAECHE_QM,
-    InvoiceType.KABEL: AllocationKey.FLAECHE_QM,
+    InvoiceType.KABEL: AllocationKey.WOHNEINHEITEN,
     InvoiceType.HEIZUNG_GEBAEUDE: AllocationKey.FLAECHE_QM,
 }
 
@@ -96,17 +102,20 @@ def default_allocation_key(invoice_type: InvoiceType) -> AllocationKey:
 class RoomCreate(BaseModel):
     name: str
     area_sqm: Decimal | None = None
+    consumption_amount: Decimal | None = None
 
 
 class RoomUpdate(BaseModel):
     name: str | None = None
     area_sqm: Decimal | None = None
+    consumption_amount: Decimal | None = None
 
 
 class RoomRead(BaseModel):
     id: int
     name: str
     area_sqm: Decimal | None = None
+    consumption_amount: Decimal | None = None
 
     model_config = {"from_attributes": True}
 
@@ -133,6 +142,8 @@ class PropertyUnitSummary(BaseModel):
     id: int
     name: str
     living_area_sqm: Decimal | None
+    mea_share: Decimal | None = None
+    consumption_amount: Decimal | None = None
     room_count: int
 
 
@@ -175,6 +186,8 @@ class ApartmentUpdate(BaseModel):
     city: str | None = None
     total_area_sqm: Decimal | None = None
     living_area_sqm: Decimal | None = None
+    mea_share: Decimal | None = None
+    consumption_amount: Decimal | None = None
 
 
 class ApartmentRead(BaseModel):
@@ -185,6 +198,8 @@ class ApartmentRead(BaseModel):
     city: str
     total_area_sqm: Decimal | None
     living_area_sqm: Decimal | None = None
+    mea_share: Decimal | None = None
+    consumption_amount: Decimal | None = None
     rooms: list[RoomRead] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}

@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { api, DEFAULT_ALLOCATION_BY_TYPE, formatEur, MONTHS } from "@/lib/api"
+import { ALLOCATION_ITEMS, ALLOCATION_KEYS } from "@/lib/billing-labels"
 import { pickExportDirectory, saveDocxBlob } from "@/lib/download"
 import { abbreviateTenantName } from "@/lib/utils"
 
@@ -36,16 +37,8 @@ const INVOICE_TYPES = [
   { value: "sonstiges", label: "Sonstiges" },
 ] as const
 
-const ALLOCATION_KEYS = [
-  { value: "personenmonate", label: "Personenmonate" },
-  { value: "flaeche_qm", label: "Fläche (m²)" },
-] as const
-
 const INVOICE_TYPE_ITEMS = Object.fromEntries(
   INVOICE_TYPES.map((type) => [type.value, type.label]),
-)
-const ALLOCATION_ITEMS = Object.fromEntries(
-  ALLOCATION_KEYS.map((key) => [key.value, key.label]),
 )
 
 function defaultInvoiceForm(year: number) {

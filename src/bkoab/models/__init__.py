@@ -41,6 +41,9 @@ class PropertyType(str, enum.Enum):
 class AllocationKey(str, enum.Enum):
     PERSONENMONATE = "personenmonate"
     FLAECHE_QM = "flaeche_qm"
+    WOHNEINHEITEN = "wohneinheiten"
+    DIREKTZUORDNUNG = "direktzuordnung"
+    MEA = "mea"
 
 
 class AllocationScope(str, enum.Enum):
@@ -109,6 +112,8 @@ class Apartment(Base):
     street: Mapped[str] = mapped_column(String(200), default="")
     city: Mapped[str] = mapped_column(String(200), default="")
     living_area_sqm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    mea_share: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    consumption_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
     iban: Mapped[str] = mapped_column(String(34), default="")
     account_holder: Mapped[str] = mapped_column(String(200), default="")
     payment_reference_hint: Mapped[str] = mapped_column(String(200), default="")
@@ -128,9 +133,9 @@ class Room(Base):
     apartment_id: Mapped[int] = mapped_column(ForeignKey("apartments.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(100))
     area_sqm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
-
-    apartment: Mapped["Apartment"] = relationship(back_populates="rooms")
+    consumption_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
     leases: Mapped[list["Lease"]] = relationship(back_populates="room", cascade="all, delete-orphan")
+    apartment: Mapped["Apartment"] = relationship(back_populates="rooms")
 
 
 class Tenant(Base):

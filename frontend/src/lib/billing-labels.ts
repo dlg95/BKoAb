@@ -11,7 +11,19 @@ export function billingKind(propertyType: string, unitCount: number): BillingKin
 
 /** Applies to WG and MFH alike — allocation is per invoice, not per object type. */
 export const ALLOCATION_PER_INVOICE_HINT =
-  "Die Verteilerquote (Personenmonate oder Fläche m²) wählen Sie pro Rechnung — Mischabrechnungen sind normal."
+  "Die Verteilerquote wählen Sie pro Rechnung — Mischabrechnungen sind normal (Personenmonate, Fläche m², Wohneinheiten, Direktzuordnung, MEA)."
+
+export const ALLOCATION_KEYS = [
+  { value: "personenmonate", label: "Personenmonate" },
+  { value: "flaeche_qm", label: "Fläche (m²)" },
+  { value: "wohneinheiten", label: "Wohneinheiten (gleich)" },
+  { value: "direktzuordnung", label: "Direktzuordnung (z.B. Verbrauch)" },
+  { value: "mea", label: "Miteigentumsanteile" },
+] as const
+
+export const ALLOCATION_ITEMS = Object.fromEntries(
+  ALLOCATION_KEYS.map((key) => [key.value, key.label]),
+)
 
 export const BILLING_LABELS = {
   wg: {

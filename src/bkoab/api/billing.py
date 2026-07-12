@@ -272,13 +272,10 @@ def create_property_billing_year(property_id: int, payload: BillingYearCreate, d
 
 @router.get("/properties/{property_id}/billing-years/{year}", response_model=PropertyBillingYearRead)
 def get_property_billing_year(property_id: int, year: int, db: Session = Depends(get_db)):
-    billing_year = (
-        db.query(PropertyBillingYear)
-        .filter(PropertyBillingYear.property_id == property_id, PropertyBillingYear.year == year)
-        .first()
-    )
-    if not billing_year:
-        raise HTTPException(404, f"Gebäude-Abrechnung für {year} nicht angelegt")
+    prop = db.get(Property, property_id)
+    if not prop:
+        raise HTTPException(404, "Gebäude nicht gefunden")
+    billing_year = _get_or_create_property_billing_year(db, property_id, year)
     return PropertyBillingYearRead.model_validate(billing_year)
 
 

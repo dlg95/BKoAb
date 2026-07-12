@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useParams } from "react-router-dom"
 import { useState } from "react"
 
-import { BillingYearsCard } from "@/components/billing-years-card"
 import { LinkButton } from "@/components/link-button"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { api, DEFAULT_ALLOCATION_BY_TYPE, formatEur } from "@/lib/api"
-import { ALLOCATION_PER_INVOICE_HINT } from "@/lib/billing-labels"
+import { ALLOCATION_ITEMS, ALLOCATION_KEYS, ALLOCATION_PER_INVOICE_HINT } from "@/lib/billing-labels"
 
 const INVOICE_TYPES = [
   { value: "grundsteuer", label: "Grundsteuer" },
@@ -28,13 +27,7 @@ const INVOICE_TYPES = [
   { value: "sonstiges", label: "Sonstiges" },
 ] as const
 
-const ALLOCATION_KEYS = [
-  { value: "flaeche_qm", label: "Fläche (m²)" },
-  { value: "personenmonate", label: "Personenmonate" },
-] as const
-
 const INVOICE_TYPE_ITEMS = Object.fromEntries(INVOICE_TYPES.map((t) => [t.value, t.label]))
-const ALLOCATION_ITEMS = Object.fromEntries(ALLOCATION_KEYS.map((k) => [k.value, k.label]))
 
 function defaultInvoiceForm(year: number) {
   return {
@@ -66,17 +59,10 @@ export function PropertyBillingPage() {
     enabled: !!propertyId,
   })
 
-  const { data: billingYearInfo, isError: billingYearMissing } = useQuery({
-    queryKey: ["property-billing-year", propertyId, billingYear],
-    queryFn: () => api.getPropertyBillingYear(propertyId, billingYear),
-    enabled: !!propertyId && !!billingYear,
-    retry: false,
-  })
-
   const { data: invoices } = useQuery({
     queryKey: ["property-invoices", propertyId, billingYear],
     queryFn: () => api.propertyInvoices(propertyId, billingYear),
-    enabled: !!propertyId && !!billingYearInfo,
+    enabled: !!propertyId && !!billingYear,
   })
 
   const [invoiceForm, setInvoiceForm] = useState(defaultInvoiceForm(billingYear))
@@ -90,12 +76,19 @@ export function PropertyBillingPage() {
         allocation_scope: "property",
       })
       if (pendingPdf) {
-        await api.uploadInvoiceDocument(created.id, pendingPdf)
+        try {
+          await api.uploadInvoiceDocument(created.id, pendingPdf)
+        } catch (uploadError) {
+          throw new Error(
+            `Rechnung gespeichert, PDF-Upload fehlgeschlagen: ${(uploadError as Error).message}`,
+          )
+        }
       }
       return created
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["property-invoices", propertyId, billingYear] })
+      queryClient.invalidateQueries({ queryKey: ["property-billing-years", propertyId] })
       setInvoiceForm(defaultInvoiceForm(billingYear))
       setPendingPdf(null)
     },
@@ -175,10 +168,7 @@ export function PropertyBillingPage() {
         </div>
       )}
 
-      {billingYearMissing ? (
-        <BillingYearsCard propertyId={propertyId} unitName={property?.name} kind="mfh" />
-      ) : (
-        <div className="space-y-4">
+      <div className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>{editingInvoiceId ? "Rechnung bearbeiten" : "Rechnung erfassen"}</CardTitle>
@@ -338,8 +328,7 @@ export function PropertyBillingPage() {
               </Table>
             </CardContent>
           </Card>
-        </div>
-      )}
+      </div>
     </div>
   )
 }

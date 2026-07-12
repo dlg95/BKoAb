@@ -30,7 +30,9 @@ export function ApartmentDetailPage() {
     total_area_sqm: "",
   })
   const [newRoomName, setNewRoomName] = useState("")
-  const [roomDrafts, setRoomDrafts] = useState<Record<number, { name: string; area_sqm: string }>>({})
+  const [roomDrafts, setRoomDrafts] = useState<
+    Record<number, { name: string; area_sqm: string; consumption_amount: string }>
+  >({})
 
   useEffect(() => {
     if (apartment) {
@@ -44,7 +46,11 @@ export function ApartmentDetailPage() {
         Object.fromEntries(
           apartment.rooms.map((room) => [
             room.id,
-            { name: room.name, area_sqm: room.area_sqm || "" },
+            {
+              name: room.name,
+              area_sqm: room.area_sqm || "",
+              consumption_amount: room.consumption_amount || "",
+            },
           ]),
         ),
       )
@@ -86,6 +92,7 @@ export function ApartmentDetailPage() {
       return api.updateRoom(roomId, {
         name: draft.name,
         area_sqm: draft.area_sqm || null,
+        consumption_amount: draft.consumption_amount || null,
       })
     },
     onSuccess: () => {
@@ -163,12 +170,17 @@ export function ApartmentDetailPage() {
               <TableRow>
                 <TableHead>Bezeichnung</TableHead>
                 <TableHead>Fläche (m²)</TableHead>
+                <TableHead>Verbrauch</TableHead>
                 <TableHead className="w-32" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {apartment.rooms.map((room) => {
-                const draft = roomDrafts[room.id] ?? { name: room.name, area_sqm: room.area_sqm || "" }
+                const draft = roomDrafts[room.id] ?? {
+                  name: room.name,
+                  area_sqm: room.area_sqm || "",
+                  consumption_amount: room.consumption_amount || "",
+                }
                 return (
                   <TableRow key={room.id}>
                     <TableCell>
@@ -194,6 +206,21 @@ export function ApartmentDetailPage() {
                           })
                         }
                         className="w-32"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={draft.consumption_amount}
+                        onChange={(e) =>
+                          setRoomDrafts({
+                            ...roomDrafts,
+                            [room.id]: { ...draft, consumption_amount: e.target.value },
+                          })
+                        }
+                        className="w-32"
+                        placeholder="z.B. m³"
                       />
                     </TableCell>
                     <TableCell className="space-x-1">

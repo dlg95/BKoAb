@@ -7,8 +7,12 @@ from bkoab.services.allocation import (
     LeasePeriod,
     PersonPeriod,
     UnitArea,
+    UnitShareData,
     compute_area_shares,
+    compute_direct_assignment_shares,
+    compute_equal_unit_shares,
     compute_head_months,
+    compute_mea_shares,
     head_months_for_lease,
     occupied_months_in_year,
 )
@@ -106,3 +110,29 @@ def test_area_shares_two_units():
     assert float(area2) == pytest.approx(95.0)
     assert float(ratio1) == pytest.approx(85 / 180, rel=1e-3)
     assert float(ratio1) + float(ratio2) == pytest.approx(1.0, rel=1e-3)
+
+
+def test_equal_unit_shares():
+    num, den, ratio = compute_equal_unit_shares(4, True)
+    assert float(num) == pytest.approx(1.0)
+    assert float(den) == pytest.approx(4.0)
+    assert float(ratio) == pytest.approx(0.25)
+
+
+def test_mea_shares():
+    units = [
+        UnitShareData(1, Decimal("300"), Decimal("0")),
+        UnitShareData(2, Decimal("500"), Decimal("0")),
+    ]
+    num, den, ratio = compute_mea_shares(units, 1)
+    assert float(num) == pytest.approx(300.0)
+    assert float(den) == pytest.approx(800.0)
+    assert float(ratio) == pytest.approx(0.375, rel=1e-3)
+
+
+def test_direct_assignment_shares():
+    amounts = {1: Decimal("30"), 2: Decimal("70")}
+    num, den, ratio = compute_direct_assignment_shares(amounts, 1)
+    assert float(num) == pytest.approx(30.0)
+    assert float(den) == pytest.approx(100.0)
+    assert float(ratio) == pytest.approx(0.3)
