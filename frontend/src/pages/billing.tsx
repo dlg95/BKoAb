@@ -199,11 +199,17 @@ export function BillingPage() {
     setExportStatus(`Zielordner: ${handle.name}`)
   }
 
-  async function exportPartyDocx(leaseId: number, tenantName: string) {
+  async function exportPartyDocx(leaseId: number, tenantName: string, roomName: string) {
     setExportingLeaseId(leaseId)
-    setExportStatus(`DOCX wird erstellt für ${tenantName}…`)
+    setExportStatus(`DOCX wird erstellt für ${tenantName} (${roomName})…`)
     try {
-      const { blob, filename } = await api.exportPartyDocx(apartmentId, billingYear, leaseId, tenantName)
+      const { blob, filename } = await api.exportPartyDocx(
+        apartmentId,
+        billingYear,
+        leaseId,
+        tenantName,
+        roomName,
+      )
       const result = await saveDocxBlob(blob, filename, exportDirHandle)
       if (result === "cancelled") {
         setExportStatus("Speichern abgebrochen.")
@@ -251,7 +257,7 @@ export function BillingPage() {
           <p className="text-muted-foreground">{apartment?.name}</p>
         </div>
         <LinkButton variant="outline" to={`/wohnungen/${apartmentId}`}>
-          Zur Wohnung
+          Zur WG-Wohnung
         </LinkButton>
       </div>
 
@@ -544,7 +550,7 @@ export function BillingPage() {
                       variant="outline"
                       size="sm"
                       disabled={exportingLeaseId !== null}
-                      onClick={() => exportPartyDocx(party.lease_id, party.tenant_name)}
+                      onClick={() => exportPartyDocx(party.lease_id, party.tenant_name, party.room_name)}
                     >
                       {exportingLeaseId === party.lease_id ? (
                         <>

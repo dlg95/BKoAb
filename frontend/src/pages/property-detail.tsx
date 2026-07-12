@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { api, DEFAULT_ALLOCATION_BY_TYPE, formatEur } from "@/lib/api"
+import { ALLOCATION_PER_INVOICE_HINT, BILLING_LABELS } from "@/lib/billing-labels"
 
 const INVOICE_TYPES = [
   { value: "grundsteuer", label: "Grundsteuer" },
@@ -148,7 +149,9 @@ export function PropertyDetailPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">{property.name}</h1>
-          <p className="text-muted-foreground">{property.property_type_label}</p>
+          <p className="text-muted-foreground">
+            {BILLING_LABELS.mfh.topUnit} · {property.property_type_label}
+          </p>
         </div>
         <LinkButton variant="outline" to="/gebaeude">Zurück</LinkButton>
       </div>
@@ -156,13 +159,13 @@ export function PropertyDetailPage() {
       <Tabs defaultValue="stammdaten">
         <TabsList>
           <TabsTrigger value="stammdaten">Stammdaten</TabsTrigger>
-          <TabsTrigger value="wohnungen">Wohnungen</TabsTrigger>
+          <TabsTrigger value="wohnungen">{BILLING_LABELS.mfh.subUnitPlural}</TabsTrigger>
           <TabsTrigger value="hausrechnungen">Haus-Rechnungen</TabsTrigger>
         </TabsList>
 
         <TabsContent value="stammdaten" className="space-y-4">
           <Card>
-            <CardHeader><CardTitle>Gebäudedaten</CardTitle></CardHeader>
+            <CardHeader><CardTitle>{BILLING_LABELS.mfh.topUnit} — Stammdaten</CardTitle></CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2"><Label>Name</Label><Input value={propertyForm.name} onChange={(e) => setPropertyForm({ ...propertyForm, name: e.target.value })} /></div>
               <div className="space-y-2"><Label>Gesamtfläche (m²)</Label><Input type="number" step="0.01" value={propertyForm.total_area_sqm} onChange={(e) => setPropertyForm({ ...propertyForm, total_area_sqm: e.target.value })} /></div>
@@ -177,8 +180,11 @@ export function PropertyDetailPage() {
         <TabsContent value="wohnungen" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Wohnungen im Gebäude</CardTitle>
-              <CardDescription>Nutzfläche je Wohnung für Flächenverteilung.</CardDescription>
+              <CardTitle>{BILLING_LABELS.mfh.subUnitPlural} im {BILLING_LABELS.mfh.topUnit}</CardTitle>
+              <CardDescription>
+                Untereinheiten des Gebäudes — Nutzfläche je {BILLING_LABELS.mfh.subUnit} für Rechnungen
+                mit Verteilerquote Fläche (m²). {ALLOCATION_PER_INVOICE_HINT}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <Table>
@@ -202,7 +208,7 @@ export function PropertyDetailPage() {
                 </TableBody>
               </Table>
               <div className="flex flex-wrap items-end gap-2 border-t pt-4">
-                <div className="space-y-2"><Label>Neue Wohnung</Label><Input value={unitForm.name} onChange={(e) => setUnitForm({ ...unitForm, name: e.target.value })} placeholder="Whg 1" className="w-48" /></div>
+                <div className="space-y-2"><Label>Neue {BILLING_LABELS.mfh.subUnit}</Label><Input value={unitForm.name} onChange={(e) => setUnitForm({ ...unitForm, name: e.target.value })} placeholder="Whg 1" className="w-48" /></div>
                 <div className="space-y-2"><Label>m²</Label><Input type="number" step="0.01" value={unitForm.living_area_sqm} onChange={(e) => setUnitForm({ ...unitForm, living_area_sqm: e.target.value })} className="w-32" /></div>
                 <Button onClick={() => createUnit.mutate()} disabled={!unitForm.name || createUnit.isPending}>Anlegen</Button>
               </div>
@@ -214,7 +220,12 @@ export function PropertyDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>Abrechnungsjahr {billingYear}</CardTitle>
-              <CardDescription>Haus-Rechnungen werden anteilig auf Wohnungen nach m² verteilt.</CardDescription>
+              <CardDescription>
+                Rechnungen auf Gebäude-Ebene (z. B. Grundsteuer, Versicherung). Verteilerquote je Rechnung wählen —
+                bei Fläche (m²) wird der Betrag anteilig nach Wohnungsflächen verteilt.
+                {" "}
+                {ALLOCATION_PER_INVOICE_HINT}
+              </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">
               {billingYears?.map((by) => (

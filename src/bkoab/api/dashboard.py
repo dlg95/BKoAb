@@ -8,6 +8,7 @@ from bkoab.schemas import (
     ApartmentRead,
     ApartmentUpdate,
     DashboardApartmentSummary,
+    DashboardBillingUnit,
     DashboardPropertySummary,
     DashboardRead,
     LandlordProfileRead,
@@ -15,6 +16,12 @@ from bkoab.schemas import (
     RoomCreate,
     RoomRead,
 )
+
+
+def _property_kind(prop: Property, unit_count: int) -> str:
+    if prop.property_type in (PropertyType.MFH, PropertyType.WEG) or unit_count > 1:
+        return "mfh"
+    return "wg"
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
@@ -53,53 +60,85 @@ def _ensure_property_for_apartment(db: Session, apartment: Apartment) -> None:
 def get_dashboard(db: Session = Depends(get_db)):
     apartments = db.query(Apartment).options(joinedload(Apartment.rooms), joinedload(Apartment.property)).all()
     properties = db.query(Property).all()
-    summaries: list[DashboardApartmentSummary] = []
-    property_summaries: list[DashboardPropertySummary] = []
+    billing_units: list[DashboardBillingUnit] = []
     today = __import__("datetime").date.today()
 
+    apartments_by_property: dict[int, list[Apartment]] = {}
     for apt in apartments:
-        years = [by.year for by in db.query(BillingYear).filter(BillingYear.apartment_id == apt.id).all()]
-        active_leases = (
-            db.query(Lease)
-            .join(Room)
-            .filter(Room.apartment_id == apt.id)
-            .filter(Lease.move_in <= today)
-            .filter((Lease.move_out.is_(None)) | (Lease.move_out >= today))
-            .count()
-        )
-        summaries.append(
-            DashboardApartmentSummary(
-                id=apt.id,
-                name=apt.name,
-                property_id=apt.property_id,
-                property_name=apt.property.name if apt.property else None,
-                room_count=len(apt.rooms),
-                active_lease_count=active_leases,
-                billing_years=sorted(years, reverse=True),
-            )
-        )
+        if apt.property_id:
+            apartments_by_property.setdefault(apt.property_id, []).append(apt)
 
     for prop in properties:
-        unit_count = db.query(Apartment).filter(Apartment.property_id == prop.id).count()
-        years = [
-            by.year
-            for by in db.query(PropertyBillingYear).filter(PropertyBillingYear.property_id == prop.id).all()
-        ]
-        property_summaries.append(
-            DashboardPropertySummary(
-                id=prop.id,
-                name=prop.name,
-                property_type=prop.property_type,
-                unit_count=unit_count,
-                total_area_sqm=prop.total_area_sqm,
-                billing_years=sorted(years, reverse=True),
-            )
-        )
+        units = apartments_by_property.get(prop.id, [])
+        unit_count = len(units)
+        kind = _property_kind(prop, unit_count)
 
+        if kind == "wg":
+            apt = units[0] if units else None
+            years = (
+                [by.year for by in db.query(BillingYear).filter(BillingYear.apartment_id == apt.id).all()]
+                if apt
+                else []
+            )
+            active_leases = (
+                db.query(Lease)
+                .join(Room)
+                .filter(Room.apartment_id == apt.id)
+                .filter(Lease.move_in <= today)
+                .filter((Lease.move_out.is_(None)) | (Lease.move_out >= today))
+                .count()
+                if apt
+                else 0
+            )
+            billing_units.append(
+                DashboardBillingUnit(
+                    kind="wg",
+                    property_id=prop.id,
+                    apartment_id=apt.id if apt else None,
+                    name=prop.name,
+                    street=prop.street,
+                    city=prop.city,
+                    sub_unit_count=len(apt.rooms) if apt else 0,
+                    sub_unit_label="Zimmer",
+                    active_lease_count=active_leases,
+                    billing_years=sorted(years, reverse=True),
+                    total_area_sqm=prop.total_area_sqm,
+                )
+            )
+        else:
+            active_leases = (
+                db.query(Lease)
+                .join(Room)
+                .join(Apartment)
+                .filter(Apartment.property_id == prop.id)
+                .filter(Lease.move_in <= today)
+                .filter((Lease.move_out.is_(None)) | (Lease.move_out >= today))
+                .count()
+            )
+            years = [
+                by.year
+                for by in db.query(PropertyBillingYear).filter(PropertyBillingYear.property_id == prop.id).all()
+            ]
+            billing_units.append(
+                DashboardBillingUnit(
+                    kind="mfh",
+                    property_id=prop.id,
+                    apartment_id=None,
+                    name=prop.name,
+                    street=prop.street,
+                    city=prop.city,
+                    sub_unit_count=unit_count,
+                    sub_unit_label="Wohnungen" if unit_count != 1 else "Wohnung",
+                    active_lease_count=active_leases,
+                    billing_years=sorted(years, reverse=True),
+                    total_area_sqm=prop.total_area_sqm,
+                )
+            )
+
+    billing_units.sort(key=lambda item: item.name.lower())
     landlord = db.query(LandlordProfile).first()
     return DashboardRead(
-        apartments=summaries,
-        properties=property_summaries,
+        billing_units=billing_units,
         landlord=LandlordProfileRead.model_validate(landlord) if landlord else None,
     )
 

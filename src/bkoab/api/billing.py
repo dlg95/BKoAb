@@ -51,9 +51,14 @@ def _delete_invoice_pdf(invoice_id: int) -> None:
         path.unlink()
 
 
-def _settlement_filename(year: int, tenant_name: str) -> str:
-    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in tenant_name)
-    return f"Abrechnung_{year}_{safe_name}.docx"
+def _safe_filename_part(value: str) -> str:
+    return "".join(c if c.isalnum() or c in "-_" else "_" for c in value).strip("_") or "Unbenannt"
+
+
+def _settlement_filename(year: int, tenant_name: str, room_name: str) -> str:
+    safe_tenant = _safe_filename_part(tenant_name)
+    safe_room = _safe_filename_part(room_name)
+    return f"Abrechnung_{year}_{safe_tenant}_{safe_room}.docx"
 
 
 def _invoice_year(invoice: Invoice, db: Session) -> int:
@@ -143,7 +148,7 @@ def _build_party_settlement_docx(db: Session, apartment_id: int, year: int, leas
         logo_path=logo_path,
         person_period_lines=person_period_lines,
     )
-    filename = _settlement_filename(year, party.tenant_name)
+    filename = _settlement_filename(year, party.tenant_name, party.room_name)
     return doc, filename
 
 

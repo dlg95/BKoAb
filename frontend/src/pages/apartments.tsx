@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { api } from "@/lib/api"
+import { ALLOCATION_PER_INVOICE_HINT, BILLING_LABELS } from "@/lib/billing-labels"
 
 export function ApartmentsPage() {
   const queryClient = useQueryClient()
@@ -33,13 +34,15 @@ export function ApartmentsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Wohnungen</h1>
+      <h1 className="text-2xl font-semibold">{BILLING_LABELS.wg.topUnitPlural}</h1>
 
       <Card>
         <CardHeader>
-          <CardTitle>Neue Wohnung</CardTitle>
+          <CardTitle>{BILLING_LABELS.wg.createTop}</CardTitle>
           <CardDescription>
-            Zimmer legen Sie danach einzeln in den Wohnungsdetails an.
+            {BILLING_LABELS.wg.hierarchyHint}. Zimmer (Untereinheiten) legen Sie danach in den Details an.
+            {" "}
+            {ALLOCATION_PER_INVOICE_HINT}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
@@ -73,7 +76,7 @@ export function ApartmentsPage() {
               <div>
                 <p className="font-medium">{apt.name}</p>
                 <p className="text-sm text-muted-foreground">
-                  {apt.street}, {apt.city} · {apt.rooms.length} Zimmer
+                  {apt.street}, {apt.city} · {apt.rooms.length} {BILLING_LABELS.wg.subUnitPlural}
                 </p>
               </div>
               <div className="flex gap-2">

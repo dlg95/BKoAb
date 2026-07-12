@@ -423,7 +423,24 @@ class DashboardPropertySummary(BaseModel):
     billing_years: list[int]
 
 
+class DashboardBillingUnit(BaseModel):
+    """Unified top-level billing object — WG-Wohnung or MFH-Gebäude."""
+
+    kind: str  # "wg" | "mfh"
+    property_id: int
+    apartment_id: int | None
+    name: str
+    street: str
+    city: str
+    sub_unit_count: int
+    sub_unit_label: str
+    active_lease_count: int
+    billing_years: list[int]
+    total_area_sqm: Decimal | None = None
+
+
 class DashboardRead(BaseModel):
-    apartments: list[DashboardApartmentSummary]
-    properties: list[DashboardPropertySummary]
+    billing_units: list[DashboardBillingUnit]
+    apartments: list[DashboardApartmentSummary] = Field(default_factory=list)
+    properties: list[DashboardPropertySummary] = Field(default_factory=list)
     landlord: LandlordProfileRead | None

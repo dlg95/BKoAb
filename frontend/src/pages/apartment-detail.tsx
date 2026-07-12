@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { api } from "@/lib/api"
+import { ALLOCATION_PER_INVOICE_HINT, BILLING_LABELS } from "@/lib/billing-labels"
 
 export function ApartmentDetailPage() {
   const { id } = useParams()
@@ -76,7 +77,10 @@ export function ApartmentDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{apartment.name}</h1>
+        <div>
+          <h1 className="text-2xl font-semibold">{apartment.name}</h1>
+          <p className="text-sm text-muted-foreground">{BILLING_LABELS.wg.topUnit}</p>
+        </div>
         <LinkButton variant="outline" to={`/wohnungen/${apartmentId}/mietparteien`}>
           Mietparteien
         </LinkButton>
@@ -115,17 +119,20 @@ export function ApartmentDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Zimmer ({apartment.rooms.length})</CardTitle>
+          <CardTitle>{BILLING_LABELS.wg.subUnitPlural} ({apartment.rooms.length})</CardTitle>
           <CardDescription>
-            Die Verteilerquote in der Abrechnung basiert auf Personenmonaten je Zimmer: Personen × Bewohnungsmonate.
-            Leerstehende Zimmer werden dem Vermieter als fiktive Personenmonate zugerechnet.
+            Untereinheiten der WG-Wohnung. Personenmonate je {BILLING_LABELS.wg.subUnit} ergeben sich aus
+            Bewohnerzahl und Mietzeitraum — relevant für Rechnungen mit Verteilerquote Personenmonate.
+            Leerstehende {BILLING_LABELS.wg.subUnitPlural} zählen als fiktive Personenmonate beim Vermieter.
+            {" "}
+            {ALLOCATION_PER_INVOICE_HINT}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Zimmer</TableHead>
+                <TableHead>{BILLING_LABELS.wg.subUnit}</TableHead>
                 <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
@@ -154,7 +161,11 @@ export function ApartmentDetailPage() {
 
           <div className="flex flex-wrap items-end gap-2 border-t pt-4">
             <div className="space-y-2">
-              <Label>{apartment.rooms.length === 0 ? "Zimmer hinzufügen" : "Weiteres Zimmer hinzufügen"}</Label>
+              <Label>
+                {apartment.rooms.length === 0
+                  ? `${BILLING_LABELS.wg.subUnit} hinzufügen`
+                  : `Weiteres ${BILLING_LABELS.wg.subUnit} hinzufügen`}
+              </Label>
               <Input
                 value={newRoomName}
                 onChange={(e) => setNewRoomName(e.target.value)}
@@ -167,7 +178,7 @@ export function ApartmentDetailPage() {
               disabled={!newRoomName.trim() || addRoomMutation.isPending}
             >
               <Plus className="mr-1 size-4" />
-              Zimmer anlegen
+              {BILLING_LABELS.wg.subUnit} anlegen
             </Button>
           </div>
         </CardContent>

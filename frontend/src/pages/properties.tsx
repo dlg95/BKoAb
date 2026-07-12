@@ -9,11 +9,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { api } from "@/lib/api"
+import { ALLOCATION_PER_INVOICE_HINT, BILLING_LABELS } from "@/lib/billing-labels"
 
 const PROPERTY_TYPES = [
   { value: "mfh", label: "Mehrfamilienhaus" },
   { value: "weg", label: "WEG" },
-  { value: "einfamilien", label: "Einfamilienhaus / WG" },
 ] as const
 
 const TYPE_ITEMS = Object.fromEntries(PROPERTY_TYPES.map((t) => [t.value, t.label]))
@@ -21,6 +21,7 @@ const TYPE_ITEMS = Object.fromEntries(PROPERTY_TYPES.map((t) => [t.value, t.labe
 export function PropertiesPage() {
   const queryClient = useQueryClient()
   const { data: properties } = useQuery({ queryKey: ["properties"], queryFn: api.properties })
+  const mfhProperties = properties?.filter((p) => p.property_type !== "einfamilien") ?? []
   const [form, setForm] = useState({
     name: "",
     street: "",
@@ -44,12 +45,14 @@ export function PropertiesPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Gebäude</h1>
+      <h1 className="text-2xl font-semibold">{BILLING_LABELS.mfh.topUnitPlural} (MFH/WEG)</h1>
 
       <Card>
         <CardHeader>
-          <CardTitle>Neues Gebäude</CardTitle>
-          <CardDescription>Für MFH/WEG: Gesamtfläche und Wohnungen hier anlegen.</CardDescription>
+          <CardTitle>{BILLING_LABELS.mfh.createTop}</CardTitle>
+          <CardDescription>
+            {BILLING_LABELS.mfh.hierarchyHint}. {ALLOCATION_PER_INVOICE_HINT}
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
@@ -86,13 +89,13 @@ export function PropertiesPage() {
       </Card>
 
       <div className="grid gap-4">
-        {properties?.map((prop) => (
+        {mfhProperties.map((prop) => (
           <Card key={prop.id}>
             <CardContent className="flex items-center justify-between py-6">
               <div>
                 <p className="font-medium">{prop.name}</p>
                 <p className="text-sm text-muted-foreground">
-                  {prop.property_type_label} · {prop.units.length} Wohnung(en)
+                  {prop.property_type_label} · {prop.units.length} {BILLING_LABELS.mfh.subUnitPlural}
                   {prop.total_area_sqm ? ` · ${prop.total_area_sqm} m² gesamt` : ""}
                 </p>
               </div>

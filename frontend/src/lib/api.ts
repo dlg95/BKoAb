@@ -147,22 +147,18 @@ export const DEFAULT_ALLOCATION_BY_TYPE: Record<string, string> = {
 export const api = {
   dashboard: () =>
     request<{
-      apartments: {
-        id: number
+      billing_units: {
+        kind: "wg" | "mfh"
+        property_id: number
+        apartment_id: number | null
         name: string
-        property_id: number | null
-        property_name: string | null
-        room_count: number
+        street: string
+        city: string
+        sub_unit_count: number
+        sub_unit_label: string
         active_lease_count: number
         billing_years: number[]
-      }[]
-      properties: {
-        id: number
-        name: string
-        property_type: string
-        unit_count: number
         total_area_sqm: string | null
-        billing_years: number[]
       }[]
       landlord: LandlordProfile | null
     }>("/dashboard"),
@@ -244,10 +240,16 @@ export const api = {
   preview: (apartmentId: number, year: number) => request<SettlementPreview>(`/apartments/${apartmentId}/billing-years/${year}/preview`),
   export: (apartmentId: number, year: number) =>
     request<{ files: { lease_id: number; tenant_name: string; filename: string }[] }>(`/apartments/${apartmentId}/billing-years/${year}/export`, { method: "POST" }),
-  exportPartyDocx: (apartmentId: number, year: number, leaseId: number, tenantName: string) =>
+  exportPartyDocx: (
+    apartmentId: number,
+    year: number,
+    leaseId: number,
+    tenantName: string,
+    roomName: string,
+  ) =>
     fetchDocxExport(
       `${API_BASE}/apartments/${apartmentId}/billing-years/${year}/export/${leaseId}`,
-      `Abrechnung_${year}_${tenantName}.docx`,
+      `Abrechnung_${year}_${tenantName}_${roomName}.docx`,
     ),
   landlord: () => request<LandlordProfile | null>("/landlord-profile"),
   updateLandlord: (data: object) => request<LandlordProfile>("/landlord-profile", { method: "PUT", body: JSON.stringify(data) }),

@@ -36,11 +36,11 @@ export function Layout() {
           <Separator orientation="vertical" className="h-6" />
           <nav className="flex gap-2">
             <LinkButton variant="ghost" size="sm" to="/">
-              Dashboard
+              Abrechnungs-Dashboard
             </LinkButton>
             <LinkButton variant="ghost" size="sm" to="/wohnungen">
               <Building2 className="mr-1 size-4" />
-              Wohnungen
+              WG-Wohnungen
             </LinkButton>
             <LinkButton variant="ghost" size="sm" to="/gebaeude">
               Gebäude
@@ -53,7 +53,7 @@ export function Layout() {
         </div>
       </header>
       <p className="border-b px-6 py-1.5 text-center text-xs text-muted-foreground">
-        Betriebskosten-Abrechnung für WG und MFH — Personenmonate & Flächenanteil
+        Betriebskosten-Abrechnung — Übereinheit & Untereinheit · Verteilerquote pro Rechnung
       </p>
       <main className="mx-auto max-w-6xl px-6 py-8">
         <Outlet />

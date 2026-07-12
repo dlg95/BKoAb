@@ -10,13 +10,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { api } from "@/lib/api"
+import { BILLING_LABELS } from "@/lib/billing-labels"
 
 type BillingYearsCardProps = {
   apartmentId: number
   apartmentName?: string
+  kind?: "wg" | "mfh"
 }
 
-export function BillingYearsCard({ apartmentId, apartmentName }: BillingYearsCardProps) {
+export function BillingYearsCard({ apartmentId, apartmentName, kind = "wg" }: BillingYearsCardProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const currentYear = new Date().getFullYear()
@@ -43,7 +45,7 @@ export function BillingYearsCard({ apartmentId, apartmentName }: BillingYearsCar
         <CardTitle>Abrechnungsjahre</CardTitle>
         <CardDescription>
           {apartmentName
-            ? `Kalenderjahres-Abrechnungen für ${apartmentName} (01.01.–31.12.)`
+            ? `Kalenderjahres-Abrechnung für ${BILLING_LABELS[kind].topUnit} „${apartmentName}" (01.01.–31.12.)`
             : "Pro Kalenderjahr eine eigene Abrechnung anlegen"}
         </CardDescription>
       </CardHeader>
