@@ -42,6 +42,9 @@ export function Layout() {
               <Building2 className="mr-1 size-4" />
               Wohnungen
             </LinkButton>
+            <LinkButton variant="ghost" size="sm" to="/gebaeude">
+              Gebäude
+            </LinkButton>
             <LinkButton variant="ghost" size="sm" to="/einstellungen">
               <Settings className="mr-1 size-4" />
               Briefkopf
@@ -50,7 +53,7 @@ export function Layout() {
         </div>
       </header>
       <p className="border-b px-6 py-1.5 text-center text-xs text-muted-foreground">
-        Betriebskosten-Abrechnungstool für WG-Vermietungen mit pro-Personen-Umlage
+        Betriebskosten-Abrechnung für WG und MFH — Personenmonate & Flächenanteil
       </p>
       <main className="mx-auto max-w-6xl px-6 py-8">
         <Outlet />

@@ -3,6 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     Date,
     DateTime,
     Enum,
@@ -24,6 +25,22 @@ class BillingStatus(str, enum.Enum):
     FINALIZED = "finalized"
 
 
+class PropertyType(str, enum.Enum):
+    EINFAMILIEN = "einfamilien"
+    MFH = "mfh"
+    WEG = "weg"
+
+
+class AllocationKey(str, enum.Enum):
+    PERSONENMONATE = "personenmonate"
+    FLAECHE_QM = "flaeche_qm"
+
+
+class AllocationScope(str, enum.Enum):
+    UNIT = "unit"
+    PROPERTY = "property"
+
+
 class InvoiceType(str, enum.Enum):
     WEG = "weg"
     GAS = "gas"
@@ -31,6 +48,14 @@ class InvoiceType(str, enum.Enum):
     HANDWERKER = "handwerker"
     GRUNDSTEUER = "grundsteuer"
     SONSTIGES = "sonstiges"
+    HAUSMEISTER = "hausmeister"
+    AUFZUG = "aufzug"
+    VERSICHERUNG = "versicherung"
+    SCHORNSTEINFEGER = "schornsteinfeger"
+    WASSER_ABWASSER = "wasser_abwasser"
+    MUELL = "muell"
+    KABEL = "kabel"
+    HEIZUNG_GEBAEUDE = "heizung_gebaeude"
 
 
 class LandlordProfile(Base):
@@ -46,18 +71,43 @@ class LandlordProfile(Base):
     payment_text_template: Mapped[str] = mapped_column(Text, default="")
 
 
-class Apartment(Base):
-    __tablename__ = "apartments"
+class Property(Base):
+    __tablename__ = "properties"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     street: Mapped[str] = mapped_column(String(200), default="")
     city: Mapped[str] = mapped_column(String(200), default="")
+    total_area_sqm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    common_area_sqm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    property_type: Mapped[PropertyType] = mapped_column(
+        Enum(PropertyType), default=PropertyType.EINFAMILIEN
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    units: Mapped[list["Apartment"]] = relationship(back_populates="property", cascade="all, delete-orphan")
+    billing_years: Mapped[list["PropertyBillingYear"]] = relationship(
+        back_populates="property", cascade="all, delete-orphan"
+    )
+
+
+class Apartment(Base):
+    __tablename__ = "apartments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    property_id: Mapped[int | None] = mapped_column(
+        ForeignKey("properties.id", ondelete="CASCADE"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    street: Mapped[str] = mapped_column(String(200), default="")
+    city: Mapped[str] = mapped_column(String(200), default="")
+    living_area_sqm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     iban: Mapped[str] = mapped_column(String(34), default="")
     account_holder: Mapped[str] = mapped_column(String(200), default="")
     payment_reference_hint: Mapped[str] = mapped_column(String(200), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
+    property: Mapped["Property | None"] = relationship(back_populates="units")
     rooms: Mapped[list["Room"]] = relationship(back_populates="apartment", cascade="all, delete-orphan")
     billing_years: Mapped[list["BillingYear"]] = relationship(
         back_populates="apartment", cascade="all, delete-orphan"
@@ -70,6 +120,7 @@ class Room(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     apartment_id: Mapped[int] = mapped_column(ForeignKey("apartments.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(100))
+    area_sqm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
 
     apartment: Mapped["Apartment"] = relationship(back_populates="rooms")
     leases: Mapped[list["Lease"]] = relationship(back_populates="room", cascade="all, delete-orphan")
@@ -127,22 +178,60 @@ class BillingYear(Base):
     status: Mapped[BillingStatus] = mapped_column(Enum(BillingStatus), default=BillingStatus.DRAFT)
 
     apartment: Mapped["Apartment"] = relationship(back_populates="billing_years")
-    invoices: Mapped[list["Invoice"]] = relationship(back_populates="billing_year", cascade="all, delete-orphan")
+    invoices: Mapped[list["Invoice"]] = relationship(
+        back_populates="billing_year",
+        cascade="all, delete-orphan",
+        foreign_keys="Invoice.billing_year_id",
+    )
+
+
+class PropertyBillingYear(Base):
+    __tablename__ = "property_billing_years"
+    __table_args__ = (UniqueConstraint("property_id", "year", name="uq_property_year"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"))
+    year: Mapped[int] = mapped_column(Integer)
+    status: Mapped[BillingStatus] = mapped_column(Enum(BillingStatus), default=BillingStatus.DRAFT)
+
+    property: Mapped["Property"] = relationship(back_populates="billing_years")
+    invoices: Mapped[list["Invoice"]] = relationship(
+        back_populates="property_billing_year",
+        cascade="all, delete-orphan",
+        foreign_keys="Invoice.property_billing_year_id",
+    )
 
 
 class Invoice(Base):
     __tablename__ = "invoices"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    billing_year_id: Mapped[int] = mapped_column(ForeignKey("billing_years.id", ondelete="CASCADE"))
+    billing_year_id: Mapped[int | None] = mapped_column(
+        ForeignKey("billing_years.id", ondelete="CASCADE"), nullable=True
+    )
+    property_billing_year_id: Mapped[int | None] = mapped_column(
+        ForeignKey("property_billing_years.id", ondelete="CASCADE"), nullable=True
+    )
     invoice_type: Mapped[InvoiceType] = mapped_column(Enum(InvoiceType))
+    allocation_key: Mapped[AllocationKey] = mapped_column(
+        Enum(AllocationKey), default=AllocationKey.PERSONENMONATE
+    )
+    allocation_scope: Mapped[AllocationScope] = mapped_column(
+        Enum(AllocationScope), default=AllocationScope.UNIT
+    )
     label: Mapped[str] = mapped_column(String(200), default="")
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     period_start: Mapped[date] = mapped_column(Date)
     period_end: Mapped[date] = mapped_column(Date)
     note: Mapped[str] = mapped_column(Text, default="")
+    has_document: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    billing_year: Mapped["BillingYear"] = relationship(back_populates="invoices")
+    billing_year: Mapped["BillingYear | None"] = relationship(
+        back_populates="invoices", foreign_keys=[billing_year_id]
+    )
+    property_billing_year: Mapped["PropertyBillingYear | None"] = relationship(
+        back_populates="invoices", foreign_keys=[property_billing_year_id]
+    )
 
 
 class AdvancePayment(Base):

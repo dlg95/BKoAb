@@ -15,7 +15,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-mkdir -p data/exports data/letterheads
+mkdir -p data/exports data/letterheads data/invoices
 
 uvicorn bkoab.main:app --reload --host 127.0.0.1 --port 8000 &
 API_PID=$!

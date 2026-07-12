@@ -1,10 +1,13 @@
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
 from bkoab.services.allocation import (
     LeasePeriod,
     PersonPeriod,
+    UnitArea,
+    compute_area_shares,
     compute_head_months,
     head_months_for_lease,
     occupied_months_in_year,
@@ -89,3 +92,17 @@ def test_tenant_change_no_double_count():
     party, landlord, total = compute_head_months(leases, [1], 2025)
     assert float(landlord) == pytest.approx(0, abs=0.1)
     assert float(party[1]) + float(party[2]) == pytest.approx(float(total), rel=1e-2)
+
+
+def test_area_shares_two_units():
+    units = [
+        UnitArea(1, Decimal("85")),
+        UnitArea(2, Decimal("95")),
+    ]
+    area1, total, ratio1 = compute_area_shares(units, 1)
+    area2, _, ratio2 = compute_area_shares(units, 2)
+    assert float(total) == pytest.approx(180.0)
+    assert float(area1) == pytest.approx(85.0)
+    assert float(area2) == pytest.approx(95.0)
+    assert float(ratio1) == pytest.approx(85 / 180, rel=1e-3)
+    assert float(ratio1) + float(ratio2) == pytest.approx(1.0, rel=1e-3)

@@ -17,13 +17,27 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export type Apartment = {
   id: number
+  property_id: number | null
   name: string
   street: string
   city: string
+  living_area_sqm: string | null
   iban: string
   account_holder: string
   payment_reference_hint: string
-  rooms: { id: number; name: string }[]
+  rooms: { id: number; name: string; area_sqm: string | null }[]
+}
+
+export type Property = {
+  id: number
+  name: string
+  street: string
+  city: string
+  total_area_sqm: string | null
+  common_area_sqm: string | null
+  property_type: string
+  property_type_label: string
+  units: { id: number; name: string; living_area_sqm: string | null; room_count: number }[]
 }
 
 export type Lease = {
@@ -45,14 +59,20 @@ export type Lease = {
 
 export type Invoice = {
   id: number
+  billing_year_id: number | null
+  property_billing_year_id: number | null
   invoice_type: string
   invoice_type_label: string
+  allocation_key: string
+  allocation_key_label: string
+  allocation_scope: string
   label: string
   amount: string
   period_start: string
   period_end: string
   note: string
   prorated_amount: string | null
+  has_document: boolean
 }
 
 export type AdvancePaymentRow = {
@@ -68,12 +88,16 @@ export type PartySettlement = {
   tenant_name: string
   room_name: string
   head_months: string
+  living_area_sqm: string | null
   cost_lines: {
     invoice_id: number
     label: string
+    allocation_key: string
     total_prorated: string
-    party_head_months: string
+    party_numerator: string
+    party_denominator: string
     party_share: string
+    has_document: boolean
   }[]
   total_costs: string
   total_advance_payments: string
@@ -86,6 +110,8 @@ export type SettlementPreview = {
   year: number
   total_head_months: string
   landlord_vacancy_head_months: string
+  total_property_area_sqm: string | null
+  unit_area_sqm: string | null
   parties: PartySettlement[]
   warnings: string[]
 }
@@ -101,19 +127,63 @@ export type LandlordProfile = {
   payment_text_template: string
 }
 
+export const DEFAULT_ALLOCATION_BY_TYPE: Record<string, string> = {
+  weg: "flaeche_qm",
+  gas: "personenmonate",
+  strom: "personenmonate",
+  handwerker: "personenmonate",
+  grundsteuer: "flaeche_qm",
+  sonstiges: "personenmonate",
+  hausmeister: "flaeche_qm",
+  aufzug: "flaeche_qm",
+  versicherung: "flaeche_qm",
+  schornsteinfeger: "flaeche_qm",
+  wasser_abwasser: "flaeche_qm",
+  muell: "flaeche_qm",
+  kabel: "flaeche_qm",
+  heizung_gebaeude: "flaeche_qm",
+}
+
 export const api = {
-  dashboard: () => request<{ apartments: { id: number; name: string; room_count: number; active_lease_count: number; billing_years: number[] }[]; landlord: LandlordProfile | null }>("/dashboard"),
+  dashboard: () =>
+    request<{
+      apartments: {
+        id: number
+        name: string
+        property_id: number | null
+        property_name: string | null
+        room_count: number
+        active_lease_count: number
+        billing_years: number[]
+      }[]
+      properties: {
+        id: number
+        name: string
+        property_type: string
+        unit_count: number
+        total_area_sqm: string | null
+        billing_years: number[]
+      }[]
+      landlord: LandlordProfile | null
+    }>("/dashboard"),
   apartments: () => request<Apartment[]>("/apartments"),
   createApartment: (data: object) => request<Apartment>("/apartments", { method: "POST", body: JSON.stringify(data) }),
   getApartment: (id: number) => request<Apartment>(`/apartments/${id}`),
   updateApartment: (id: number, data: object) => request<Apartment>(`/apartments/${id}`, { method: "PUT", body: JSON.stringify(data) }),
-  addRoom: (apartmentId: number, name: string) =>
+  addRoom: (apartmentId: number, name: string, area_sqm?: string) =>
     request<{ id: number; name: string }>(`/apartments/${apartmentId}/rooms`, {
       method: "POST",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, area_sqm: area_sqm || null }),
     }),
   deleteRoom: (roomId: number) => request<void>(`/rooms/${roomId}`, { method: "DELETE" }),
   deleteApartment: (id: number) => request<void>(`/apartments/${id}`, { method: "DELETE" }),
+  properties: () => request<Property[]>("/properties"),
+  createProperty: (data: object) => request<Property>("/properties", { method: "POST", body: JSON.stringify(data) }),
+  getProperty: (id: number) => request<Property>(`/properties/${id}`),
+  updateProperty: (id: number, data: object) => request<Property>(`/properties/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteProperty: (id: number) => request<void>(`/properties/${id}`, { method: "DELETE" }),
+  createUnit: (propertyId: number, data: object) =>
+    request<Apartment>(`/properties/${propertyId}/units`, { method: "POST", body: JSON.stringify(data) }),
   leases: (apartmentId: number) => request<Lease[]>(`/apartments/${apartmentId}/leases`),
   createLease: (apartmentId: number, data: object) => request<Lease>(`/apartments/${apartmentId}/leases`, { method: "POST", body: JSON.stringify(data) }),
   deleteLease: (id: number) => request<void>(`/leases/${id}`, { method: "DELETE" }),
@@ -135,10 +205,39 @@ export const api = {
     request<{ id: number; apartment_id: number; year: number; status: string }>(
       `/apartments/${apartmentId}/billing-years/${year}`,
     ),
+  propertyBillingYears: (propertyId: number) =>
+    request<{ id: number; property_id: number; year: number; status: string }[]>(
+      `/properties/${propertyId}/billing-years`,
+    ),
+  createPropertyBillingYear: (propertyId: number, year: number) =>
+    request<{ id: number; property_id: number; year: number; status: string }>(
+      `/properties/${propertyId}/billing-years`,
+      { method: "POST", body: JSON.stringify({ year }) },
+    ),
+  getPropertyBillingYear: (propertyId: number, year: number) =>
+    request<{ id: number; property_id: number; year: number; status: string }>(
+      `/properties/${propertyId}/billing-years/${year}`,
+    ),
   invoices: (apartmentId: number, year: number) => request<Invoice[]>(`/apartments/${apartmentId}/billing-years/${year}/invoices`),
-  createInvoice: (apartmentId: number, year: number, data: object) => request<Invoice>(`/apartments/${apartmentId}/billing-years/${year}/invoices`, { method: "POST", body: JSON.stringify(data) }),
+  propertyInvoices: (propertyId: number, year: number) =>
+    request<Invoice[]>(`/properties/${propertyId}/billing-years/${year}/invoices`),
+  createInvoice: (apartmentId: number, year: number, data: object) =>
+    request<Invoice>(`/apartments/${apartmentId}/billing-years/${year}/invoices`, { method: "POST", body: JSON.stringify(data) }),
+  createPropertyInvoice: (propertyId: number, year: number, data: object) =>
+    request<Invoice>(`/properties/${propertyId}/billing-years/${year}/invoices`, { method: "POST", body: JSON.stringify(data) }),
   updateInvoice: (id: number, data: object) => request<Invoice>(`/invoices/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteInvoice: (id: number) => request<void>(`/invoices/${id}`, { method: "DELETE" }),
+  uploadInvoiceDocument: async (invoiceId: number, file: File) => {
+    const form = new FormData()
+    form.append("file", file)
+    const res = await fetch(`${API_BASE}/invoices/${invoiceId}/document`, { method: "POST", body: form })
+    if (!res.ok) throw new Error(await res.text())
+    return res.json()
+  },
+  downloadInvoiceDocument: (invoiceId: number) =>
+    `${API_BASE}/invoices/${invoiceId}/document`,
+  deleteInvoiceDocument: (invoiceId: number) =>
+    request<void>(`/invoices/${invoiceId}/document`, { method: "DELETE" }),
   advancePayments: (apartmentId: number, year: number) => request<AdvancePaymentRow[]>(`/apartments/${apartmentId}/billing-years/${year}/advance-payments`),
   updateAdvancePayments: (apartmentId: number, year: number, payments: object[]) =>
     request(`/apartments/${apartmentId}/billing-years/${year}/advance-payments`, { method: "PUT", body: JSON.stringify({ payments }) }),

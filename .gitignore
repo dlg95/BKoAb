@@ -10,6 +10,7 @@ build/
 data/bkoab.db
 data/exports/
 data/letterheads/
+data/invoices/
 
 node_modules/
 frontend/dist/

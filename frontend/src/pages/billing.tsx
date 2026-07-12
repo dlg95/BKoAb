@@ -15,26 +15,43 @@ import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { api, formatEur, MONTHS } from "@/lib/api"
+import { api, DEFAULT_ALLOCATION_BY_TYPE, formatEur, MONTHS } from "@/lib/api"
 import { pickExportDirectory, saveDocxBlob } from "@/lib/download"
 import { abbreviateTenantName } from "@/lib/utils"
 
 const INVOICE_TYPES = [
-  { value: "weg", label: "WEG-Betriebskosten" },
   { value: "gas", label: "Gas" },
   { value: "strom", label: "Strom" },
   { value: "handwerker", label: "Handwerker" },
   { value: "grundsteuer", label: "Grundsteuer" },
+  { value: "hausmeister", label: "Hausmeister / Reinigung" },
+  { value: "aufzug", label: "Aufzug / Lift" },
+  { value: "versicherung", label: "Gebäudeversicherung" },
+  { value: "schornsteinfeger", label: "Schornsteinfeger" },
+  { value: "wasser_abwasser", label: "Wasser / Abwasser" },
+  { value: "muell", label: "Müll / Straßenreinigung" },
+  { value: "kabel", label: "Kabel / Gemeinschaftsantenne" },
+  { value: "heizung_gebaeude", label: "Heizkosten (Gebäude)" },
+  { value: "weg", label: "WEG-Betriebskosten" },
   { value: "sonstiges", label: "Sonstiges" },
+] as const
+
+const ALLOCATION_KEYS = [
+  { value: "personenmonate", label: "Personenmonate" },
+  { value: "flaeche_qm", label: "Fläche (m²)" },
 ] as const
 
 const INVOICE_TYPE_ITEMS = Object.fromEntries(
   INVOICE_TYPES.map((type) => [type.value, type.label]),
 )
+const ALLOCATION_ITEMS = Object.fromEntries(
+  ALLOCATION_KEYS.map((key) => [key.value, key.label]),
+)
 
 function defaultInvoiceForm(year: number) {
   return {
-    invoice_type: "weg",
+    invoice_type: "gas",
+    allocation_key: "personenmonate",
     label: "",
     amount: "",
     period_start: `${year}-01-01`,
@@ -83,6 +100,7 @@ export function BillingPage() {
 
   const [invoiceForm, setInvoiceForm] = useState(defaultInvoiceForm(billingYear))
   const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null)
+  const [pendingPdf, setPendingPdf] = useState<File | null>(null)
   const [advanceDraft, setAdvanceDraft] = useState<Record<string, string>>({})
   const [exportDirHandle, setExportDirHandle] = useState<FileSystemDirectoryHandle | null>(null)
   const [exportDirName, setExportDirName] = useState<string | null>(null)
@@ -90,27 +108,39 @@ export function BillingPage() {
   const [exportStatus, setExportStatus] = useState<string | null>(null)
 
   const createInvoice = useMutation({
-    mutationFn: () =>
-      api.createInvoice(apartmentId, billingYear, {
+    mutationFn: async () => {
+      const created = await api.createInvoice(apartmentId, billingYear, {
         ...invoiceForm,
         amount: invoiceForm.amount,
-      }),
+      })
+      if (pendingPdf) {
+        await api.uploadInvoiceDocument(created.id, pendingPdf)
+      }
+      return created
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices", apartmentId, billingYear] })
       setInvoiceForm(defaultInvoiceForm(billingYear))
+      setPendingPdf(null)
     },
   })
 
   const updateInvoice = useMutation({
-    mutationFn: () =>
-      api.updateInvoice(editingInvoiceId!, {
+    mutationFn: async () => {
+      const updated = await api.updateInvoice(editingInvoiceId!, {
         ...invoiceForm,
         amount: invoiceForm.amount,
-      }),
+      })
+      if (pendingPdf) {
+        await api.uploadInvoiceDocument(updated.id, pendingPdf)
+      }
+      return updated
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices", apartmentId, billingYear] })
       setEditingInvoiceId(null)
       setInvoiceForm(defaultInvoiceForm(billingYear))
+      setPendingPdf(null)
     },
   })
 
@@ -127,8 +157,10 @@ export function BillingPage() {
 
   function startEditInvoice(invoice: NonNullable<typeof invoices>[number]) {
     setEditingInvoiceId(invoice.id)
+    setPendingPdf(null)
     setInvoiceForm({
       invoice_type: invoice.invoice_type,
+      allocation_key: invoice.allocation_key,
       label: invoice.label,
       amount: invoice.amount,
       period_start: invoice.period_start,
@@ -139,6 +171,7 @@ export function BillingPage() {
 
   function cancelEditInvoice() {
     setEditingInvoiceId(null)
+    setPendingPdf(null)
     setInvoiceForm(defaultInvoiceForm(billingYear))
   }
 
@@ -263,12 +296,34 @@ export function BillingPage() {
                 <Select
                   value={invoiceForm.invoice_type}
                   items={INVOICE_TYPE_ITEMS}
-                  onValueChange={(v) => v && setInvoiceForm({ ...invoiceForm, invoice_type: v })}
+                  onValueChange={(v) =>
+                    v &&
+                    setInvoiceForm({
+                      ...invoiceForm,
+                      invoice_type: v,
+                      allocation_key: DEFAULT_ALLOCATION_BY_TYPE[v] || "personenmonate",
+                    })
+                  }
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {INVOICE_TYPES.map((t) => (
                       <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Verteilerquote</Label>
+                <Select
+                  value={invoiceForm.allocation_key}
+                  items={ALLOCATION_ITEMS}
+                  onValueChange={(v) => v && setInvoiceForm({ ...invoiceForm, allocation_key: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ALLOCATION_KEYS.map((k) => (
+                      <SelectItem key={k.value} value={k.value}>{k.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -292,6 +347,22 @@ export function BillingPage() {
               <div className="space-y-2 md:col-span-3">
                 <Label>Notiz</Label>
                 <Textarea value={invoiceForm.note} onChange={(e) => setInvoiceForm({ ...invoiceForm, note: e.target.value })} />
+              </div>
+              <div className="space-y-2 md:col-span-3">
+                <Label>PDF-Beleg</Label>
+                <Input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(e) => setPendingPdf(e.target.files?.[0] ?? null)}
+                />
+                {editingInvoiceId && invoices?.find((i) => i.id === editingInvoiceId)?.has_document ? (
+                  <p className="text-sm text-muted-foreground">
+                    Beleg vorhanden —{" "}
+                    <a className="underline" href={api.downloadInvoiceDocument(editingInvoiceId)} target="_blank" rel="noreferrer">
+                      anzeigen
+                    </a>
+                  </p>
+                ) : null}
               </div>
               <div className="flex flex-wrap gap-2 md:col-span-3">
                 {editingInvoiceId ? (
@@ -321,9 +392,11 @@ export function BillingPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Art</TableHead>
+                    <TableHead>Verteilerquote</TableHead>
                     <TableHead>Bezeichnung</TableHead>
                     <TableHead>Rechnungsbetrag</TableHead>
                     <TableHead>Anteil {billingYear}</TableHead>
+                    <TableHead>Beleg</TableHead>
                     <TableHead>Zeitraum</TableHead>
                     <TableHead className="w-0" />
                   </TableRow>
@@ -332,9 +405,15 @@ export function BillingPage() {
                   {invoices?.map((inv) => (
                     <TableRow key={inv.id}>
                       <TableCell>{inv.invoice_type_label}</TableCell>
+                      <TableCell>{inv.allocation_key_label}</TableCell>
                       <TableCell>{inv.label || "—"}</TableCell>
                       <TableCell>{formatEur(inv.amount)}</TableCell>
                       <TableCell>{inv.prorated_amount ? formatEur(inv.prorated_amount) : "—"}</TableCell>
+                      <TableCell>
+                        {inv.has_document ? (
+                          <a className="text-sm underline" href={api.downloadInvoiceDocument(inv.id)} target="_blank" rel="noreferrer">PDF</a>
+                        ) : "—"}
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{inv.period_start} – {inv.period_end}</TableCell>
                       <TableCell className="w-0 space-x-1">
                         <Button variant="outline" size="sm" onClick={() => startEditInvoice(inv)}>
@@ -488,6 +567,7 @@ export function BillingPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Kostenart</TableHead>
+                      <TableHead>Quote</TableHead>
                       <TableHead>Gesamt (Objekt)</TableHead>
                       <TableHead>Ihr Anteil</TableHead>
                     </TableRow>
@@ -496,6 +576,7 @@ export function BillingPage() {
                     {party.cost_lines.map((line) => (
                       <TableRow key={line.invoice_id}>
                         <TableCell>{line.label}</TableCell>
+                        <TableCell>{line.allocation_key === "personenmonate" ? "PM" : "m²"}</TableCell>
                         <TableCell>{formatEur(line.total_prorated)}</TableCell>
                         <TableCell>{formatEur(line.party_share)}</TableCell>
                       </TableRow>
@@ -520,6 +601,9 @@ export function BillingPage() {
             <p className="text-sm text-muted-foreground">
               Personenmonate gesamt: {parseFloat(preview.total_head_months).toFixed(2)} ·
               Leerstand Vermieter: {parseFloat(preview.landlord_vacancy_head_months).toFixed(2)}
+              {preview.unit_area_sqm && preview.total_property_area_sqm ? (
+                <> · Wohnfläche: {parseFloat(preview.unit_area_sqm).toFixed(2)} / {parseFloat(preview.total_property_area_sqm).toFixed(2)} m²</>
+              ) : null}
             </p>
           )}
         </TabsContent>

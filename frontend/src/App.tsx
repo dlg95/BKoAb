@@ -7,6 +7,8 @@ import { ApartmentsPage } from "@/pages/apartments"
 import { BillingPage } from "@/pages/billing"
 import { DashboardPage } from "@/pages/dashboard"
 import { LeasesPage } from "@/pages/leases"
+import { PropertiesPage } from "@/pages/properties"
+import { PropertyDetailPage } from "@/pages/property-detail"
 import { SettingsPage } from "@/pages/settings"
 
 const queryClient = new QueryClient()
@@ -22,6 +24,9 @@ export function App() {
             <Route path="wohnungen/:id" element={<ApartmentDetailPage />} />
             <Route path="wohnungen/:id/mietparteien" element={<LeasesPage />} />
             <Route path="wohnungen/:id/abrechnung/:year" element={<BillingPage />} />
+            <Route path="gebaeude" element={<PropertiesPage />} />
+            <Route path="gebaeude/:id" element={<PropertyDetailPage />} />
+            <Route path="gebaeude/:id/abrechnung/:year" element={<PropertyDetailPage />} />
             <Route path="einstellungen" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

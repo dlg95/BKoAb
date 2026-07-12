@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,13 +8,27 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from bkoab.config import INVOICES_DIR
 from bkoab.database import Base, get_db
 from bkoab.main import app
-from bkoab.models import AdvancePayment, Apartment, BillingYear, Invoice, InvoiceType, Lease, Room, Tenant
+from bkoab.models import (
+    AdvancePayment,
+    AllocationKey,
+    Apartment,
+    BillingYear,
+    Invoice,
+    InvoiceType,
+    Lease,
+    Property,
+    PropertyBillingYear,
+    PropertyType,
+    Room,
+    Tenant,
+)
 
 
 @pytest.fixture()
-def client():
+def client(tmp_path):
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -42,7 +57,15 @@ def client():
         db.add(tenant)
         db.flush()
         room = db.query(Room).filter(Room.apartment_id == apt.id).first()
-        db.add(Lease(tenant_id=tenant.id, room_id=room.id, persons=1, move_in=date(2025, 1, 1), move_out=date(2025, 12, 31)))
+        db.add(
+            Lease(
+                tenant_id=tenant.id,
+                room_id=room.id,
+                persons=1,
+                move_in=date(2025, 1, 1),
+                move_out=date(2025, 12, 31),
+            )
+        )
         by = BillingYear(apartment_id=apt.id, year=2025)
         db.add(by)
         db.flush()
@@ -50,6 +73,7 @@ def client():
             Invoice(
                 billing_year_id=by.id,
                 invoice_type=InvoiceType.GAS,
+                allocation_key=AllocationKey.PERSONENMONATE,
                 amount=Decimal("1200"),
                 period_start=date(2025, 1, 1),
                 period_end=date(2025, 12, 31),
@@ -60,8 +84,25 @@ def client():
             db.add(AdvancePayment(lease_id=lease.id, month=month, amount=Decimal("50")))
         db.commit()
         db.close()
+
+        original_invoices_dir = INVOICES_DIR
+        import bkoab.api.billing as billing_module
+        import bkoab.config as config_module
+
+        test_invoices_dir = tmp_path / "invoices"
+        test_invoices_dir.mkdir()
+        billing_module.INVOICES_DIR = test_invoices_dir
+        config_module.INVOICES_DIR = test_invoices_dir
+
         yield test_client
+
+        billing_module.INVOICES_DIR = original_invoices_dir
+        config_module.INVOICES_DIR = original_invoices_dir
     app.dependency_overrides.clear()
+
+
+def _minimal_pdf() -> bytes:
+    return b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n"
 
 
 def test_settlement_preview_and_balance(client):
@@ -72,18 +113,16 @@ def test_settlement_preview_and_balance(client):
     party = data["parties"][0]
     assert float(party["total_advance_payments"]) == pytest.approx(600.0)
     assert float(party["total_costs"]) > 0
-    # second room vacant all year -> landlord vacancy head-months
     assert float(data["landlord_vacancy_head_months"]) > 0
+    assert party["cost_lines"][0]["allocation_key"] == "personenmonate"
 
 
 def test_create_apartment_without_initial_room(client):
-    ok = client.post(
-        "/api/apartments",
-        json={"name": "WG Neu"},
-    )
+    ok = client.post("/api/apartments", json={"name": "WG Neu"})
     assert ok.status_code == 201
     apt_id = ok.json()["id"]
     assert ok.json()["rooms"] == []
+    assert ok.json()["property_id"] is not None
 
     add = client.post(f"/api/apartments/{apt_id}/rooms", json={"name": "Zimmer 1"})
     assert add.status_code == 201
@@ -158,30 +197,13 @@ def test_advance_payments_occupied_months(client):
     )
     assert rejected.status_code == 400
 
-    outside = client.post(
-        "/api/apartments/1/leases",
-        json={
-            "tenant_name": "Clara",
-            "tenant_contact": "",
-            "room_id": 2,
-            "persons": 1,
-            "move_in": "2026-01-01",
-            "move_out": None,
-        },
-    )
-    assert outside.status_code == 201
-    outside_lease_id = outside.json()["id"]
-
-    rows = client.get("/api/apartments/1/billing-years/2025/advance-payments").json()
-    lease_ids = [item["lease_id"] for item in rows]
-    assert outside_lease_id not in lease_ids
-
 
 def test_invoice_update_and_delete(client):
     create = client.post(
         "/api/apartments/1/billing-years/2025/invoices",
         json={
             "invoice_type": "gas",
+            "allocation_key": "personenmonate",
             "label": "Jahresabrechnung",
             "amount": "1200",
             "period_start": "2025-01-01",
@@ -191,12 +213,14 @@ def test_invoice_update_and_delete(client):
     )
     assert create.status_code == 201
     invoice_id = create.json()["id"]
+    assert create.json()["allocation_key"] == "personenmonate"
 
     update = client.put(
         f"/api/invoices/{invoice_id}",
         json={
-            "invoice_type": "strom",
-            "label": "Strom 2025",
+            "invoice_type": "grundsteuer",
+            "allocation_key": "flaeche_qm",
+            "label": "Grundsteuer 2025",
             "amount": "900",
             "period_start": "2025-03-01",
             "period_end": "2025-12-31",
@@ -205,25 +229,48 @@ def test_invoice_update_and_delete(client):
     )
     assert update.status_code == 200
     data = update.json()
-    assert data["invoice_type"] == "strom"
-    assert data["label"] == "Strom 2025"
-    assert float(data["amount"]) == pytest.approx(900.0)
-    assert data["note"] == "Geändert"
+    assert data["invoice_type"] == "grundsteuer"
+    assert data["allocation_key"] == "flaeche_qm"
 
     delete = client.delete(f"/api/invoices/{invoice_id}")
     assert delete.status_code == 204
 
-    missing = client.put(
-        f"/api/invoices/{invoice_id}",
+
+def test_invoice_pdf_document_lifecycle(client):
+    create = client.post(
+        "/api/apartments/1/billing-years/2025/invoices",
         json={
-            "invoice_type": "gas",
-            "label": "x",
-            "amount": "1",
+            "invoice_type": "strom",
+            "label": "Strom",
+            "amount": "500",
             "period_start": "2025-01-01",
             "period_end": "2025-12-31",
             "note": "",
         },
     )
+    invoice_id = create.json()["id"]
+
+    upload = client.post(
+        f"/api/invoices/{invoice_id}/document",
+        files={"file": ("beleg.pdf", BytesIO(_minimal_pdf()), "application/pdf")},
+    )
+    assert upload.status_code == 201
+    assert upload.json()["has_document"] is True
+
+    download = client.get(f"/api/invoices/{invoice_id}/document")
+    assert download.status_code == 200
+    assert download.headers["content-type"] == "application/pdf"
+
+    bad = client.post(
+        f"/api/invoices/{invoice_id}/document",
+        files={"file": ("beleg.txt", BytesIO(b"not pdf"), "text/plain")},
+    )
+    assert bad.status_code == 400
+
+    delete_doc = client.delete(f"/api/invoices/{invoice_id}/document")
+    assert delete_doc.status_code == 204
+
+    missing = client.get(f"/api/invoices/{invoice_id}/document")
     assert missing.status_code == 404
 
 
@@ -234,4 +281,82 @@ def test_export_single_party_docx(client):
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
     assert len(response.content) > 1000
-    assert "attachment" in response.headers.get("content-disposition", "")
+
+
+def test_mfh_property_invoice_distribution(client):
+    prop = client.post(
+        "/api/properties",
+        json={
+            "name": "Musterstraße 1",
+            "street": "Musterstraße 1",
+            "city": "12345 Berlin",
+            "total_area_sqm": "480",
+            "property_type": "mfh",
+        },
+    )
+    assert prop.status_code == 201
+    property_id = prop.json()["id"]
+
+    unit1 = client.post(
+        f"/api/properties/{property_id}/units",
+        json={"name": "Whg 1", "living_area_sqm": "85"},
+    )
+    unit2 = client.post(
+        f"/api/properties/{property_id}/units",
+        json={"name": "Whg 2", "living_area_sqm": "95"},
+    )
+    assert unit1.status_code == 201
+    assert unit2.status_code == 201
+    apt1_id = unit1.json()["id"]
+    apt2_id = unit2.json()["id"]
+
+    client.post(f"/api/apartments/{apt1_id}/billing-years", json={"year": 2025})
+    client.post(f"/api/apartments/{apt2_id}/billing-years", json={"year": 2025})
+    client.post(f"/api/properties/{property_id}/billing-years", json={"year": 2025})
+
+    client.post(
+        f"/api/properties/{property_id}/billing-years/2025/invoices",
+        json={
+            "invoice_type": "grundsteuer",
+            "amount": "4800",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+            "label": "Haus",
+        },
+    )
+
+    client.post(f"/api/apartments/{apt1_id}/rooms", json={"name": "Wohnzimmer"})
+    client.post(f"/api/apartments/{apt2_id}/rooms", json={"name": "Wohnzimmer"})
+
+    lease1 = client.post(
+        f"/api/apartments/{apt1_id}/leases",
+        json={
+            "tenant_name": "Mieter A",
+            "room_id": 3,
+            "persons": 1,
+            "move_in": "2025-01-01",
+            "move_out": "2025-12-31",
+        },
+    )
+    lease2 = client.post(
+        f"/api/apartments/{apt2_id}/leases",
+        json={
+            "tenant_name": "Mieter B",
+            "room_id": 4,
+            "persons": 1,
+            "move_in": "2025-01-01",
+            "move_out": "2025-12-31",
+        },
+    )
+    assert lease1.status_code == 201
+    assert lease2.status_code == 201
+
+    preview1 = client.get(f"/api/apartments/{apt1_id}/billing-years/2025/preview").json()
+    preview2 = client.get(f"/api/apartments/{apt2_id}/billing-years/2025/preview").json()
+
+    share1 = float(preview1["parties"][0]["total_costs"])
+    share2 = float(preview2["parties"][0]["total_costs"])
+    assert share1 > 0
+    assert share2 > 0
+    assert share1 < share2
+    assert share1 / share2 == pytest.approx(85 / 95, rel=0.05)

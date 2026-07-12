@@ -8,7 +8,7 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Cm, Pt
 
-from bkoab.schemas import PartySettlement, SettlementPreview
+from bkoab.schemas import AllocationKey, PartySettlement, SettlementPreview
 from bkoab.services.docx_styles import (
     add_cell_paragraph,
     add_styled_paragraph,
@@ -78,7 +78,7 @@ def _format_person_periods_note(
     return f"Personenzahl {year}: {periods_text}."
 
 
-def _add_person_months_note(
+def _add_allocation_notes(
     doc: Document,
     *,
     preview: SettlementPreview,
@@ -93,23 +93,43 @@ def _add_person_months_note(
         note += f", Leerstand {preview.landlord_vacancy_head_months:.2f}"
     add_styled_paragraph(doc, note + ".", size=8, compact=True)
 
+    if preview.unit_area_sqm and preview.total_property_area_sqm:
+        add_styled_paragraph(
+            doc,
+            f"Flächenverteilung Gebäude: {preview.unit_area_sqm:.2f} m² von "
+            f"{preview.total_property_area_sqm:.2f} m² gesamt.",
+            size=8,
+            compact=True,
+        )
+
     periods_note = _format_person_periods_note(person_period_lines, preview.year)
     if periods_note:
         add_styled_paragraph(doc, periods_note, size=8, compact=True)
 
 
-def _add_cost_lines_table(
-    doc: Document,
-    *,
-    party: PartySettlement,
-    total_head_months: Decimal,
-) -> None:
-    table = doc.add_table(rows=1, cols=5)
+def _format_numerator(line, key: AllocationKey) -> str:
+    if key == AllocationKey.PERSONENMONATE:
+        return f"{line.party_numerator:.2f}"
+    if line.party_denominator == line.party_numerator and line.party_denominator > 0:
+        return "gleich"
+    return f"{line.party_numerator:.2f}"
+
+
+def _format_denominator(line, key: AllocationKey) -> str:
+    if key == AllocationKey.PERSONENMONATE:
+        return f"{line.party_denominator:.2f}"
+    if line.party_denominator > 0 and line.party_numerator == Decimal("1"):
+        return f"{line.party_denominator:.0f}"
+    return f"{line.party_denominator:.2f}"
+
+
+def _add_cost_lines_table(doc: Document, *, party: PartySettlement) -> None:
+    table = doc.add_table(rows=1, cols=6)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     set_table_no_borders(table)
-    set_table_column_widths(table, [6.2, 2.4, 1.5, 1.5, 2.2])
+    set_table_column_widths(table, [5.5, 2.2, 1.3, 1.3, 1.3, 2.0])
 
-    headers = ["Kostenart", "Gesamt", "Ihre PM", "PM gesamt", "Ihr Anteil"]
+    headers = ["Kostenart", "Gesamt", "Quote", "Ihr Wert", "Gesamt", "Ihr Anteil"]
     for idx, title in enumerate(headers):
         cell = table.rows[0].cells[idx]
         set_cell_margins(cell, top=10, bottom=20, left=20, right=20)
@@ -122,19 +142,29 @@ def _add_cost_lines_table(
             compact=True,
         )
 
-    pm_total = f"{total_head_months:.2f}"
     for line in party.cost_lines:
+        key = line.allocation_key
+        quote_label = "PM" if key == AllocationKey.PERSONENMONATE else "m²"
         row = table.add_row().cells
         values = [
             (line.label, False),
             (format_eur(line.total_prorated), True),
-            (f"{line.party_head_months:.2f}", True),
-            (pm_total, True),
+            (quote_label, True),
+            (_format_numerator(line, key), True),
+            (_format_denominator(line, key), True),
             (format_eur(line.party_share), True),
         ]
         for idx, (text, align_right) in enumerate(values):
             set_cell_margins(row[idx], top=8, bottom=8, left=20, right=20)
             set_cell_text(row[idx], text, size=8, align_right=align_right, compact=True)
+
+    if any(line.has_document for line in party.cost_lines):
+        add_styled_paragraph(
+            doc,
+            "Belege zu den markierten Kostenarten liegen der Abrechnung bei.",
+            size=8,
+            compact=True,
+        )
 
 
 def _add_balance_summary(doc: Document, party: PartySettlement) -> None:
@@ -204,7 +234,7 @@ def generate_settlement_docx(
     add_cell_paragraph(right, landlord_street, size=9, align_right=True)
     add_cell_paragraph(right, landlord_city, size=9, align_right=True)
     if landlord_phone:
-        add_cell_paragraph(right, f"Tel. {landlord_phone}", size=8, align_right=True)
+        add_cell_paragraph(right, f"Tel. {landlord_phone}", size=9, align_right=True)
     if landlord_email:
         add_cell_paragraph(right, landlord_email, size=8, align_right=True)
 
@@ -232,14 +262,14 @@ def generate_settlement_docx(
         compact=True,
     )
 
-    _add_person_months_note(
+    _add_allocation_notes(
         doc,
         preview=preview,
         party=party,
         person_period_lines=person_period_lines or [],
     )
 
-    _add_cost_lines_table(doc, party=party, total_head_months=preview.total_head_months)
+    _add_cost_lines_table(doc, party=party)
 
     _add_balance_summary(doc, party)
 

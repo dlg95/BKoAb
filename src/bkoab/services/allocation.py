@@ -88,6 +88,39 @@ def head_months_for_lease(lease: LeasePeriod, year: int) -> Decimal:
     return total.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
+@dataclass
+class UnitArea:
+    unit_id: int
+    living_area_sqm: Decimal
+
+
+def compute_area_shares(
+    units: list[UnitArea],
+    target_unit_id: int,
+) -> tuple[Decimal, Decimal, Decimal]:
+    total = sum((u.living_area_sqm for u in units if u.living_area_sqm > 0), Decimal("0"))
+    unit_area = next(
+        (u.living_area_sqm for u in units if u.unit_id == target_unit_id),
+        Decimal("0"),
+    )
+    if total <= 0 or unit_area <= 0:
+        return unit_area, total, Decimal("0")
+    share = (unit_area / total).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    return unit_area, total, share
+
+
+def compute_room_area_shares(
+    lease_room_areas: dict[int, Decimal],
+    lease_id: int,
+) -> tuple[Decimal, Decimal, Decimal]:
+    total = sum((area for area in lease_room_areas.values() if area > 0), Decimal("0"))
+    room_area = lease_room_areas.get(lease_id, Decimal("0"))
+    if total <= 0 or room_area <= 0:
+        return room_area, total, Decimal("0")
+    share = (room_area / total).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    return room_area, total, share
+
+
 def compute_head_months(
     leases: list[LeasePeriod],
     room_ids: list[int],

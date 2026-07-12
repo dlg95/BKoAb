@@ -1,16 +1,14 @@
-from pathlib import Path
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
-from bkoab.config import EXPORTS_DIR, LETTERHEADS_DIR
 from bkoab.database import get_db
-from bkoab.models import Apartment, BillingYear, LandlordProfile, Lease, Room, Tenant
+from bkoab.models import Apartment, BillingYear, LandlordProfile, Lease, Property, PropertyBillingYear, PropertyType, Room, Tenant
 from bkoab.schemas import (
     ApartmentCreate,
     ApartmentRead,
     ApartmentUpdate,
     DashboardApartmentSummary,
+    DashboardPropertySummary,
     DashboardRead,
     LandlordProfileRead,
     LandlordProfileUpdate,
@@ -24,20 +22,39 @@ router = APIRouter(prefix="/api", tags=["dashboard"])
 def _apartment_to_read(apartment: Apartment) -> ApartmentRead:
     return ApartmentRead(
         id=apartment.id,
+        property_id=apartment.property_id,
         name=apartment.name,
         street=apartment.street,
         city=apartment.city,
+        living_area_sqm=apartment.living_area_sqm,
         iban=apartment.iban,
         account_holder=apartment.account_holder,
         payment_reference_hint=apartment.payment_reference_hint,
-        rooms=[RoomRead(id=r.id, name=r.name) for r in apartment.rooms],
+        rooms=[RoomRead(id=r.id, name=r.name, area_sqm=r.area_sqm) for r in apartment.rooms],
     )
+
+
+def _ensure_property_for_apartment(db: Session, apartment: Apartment) -> None:
+    if apartment.property_id:
+        return
+    prop = Property(
+        name=apartment.name,
+        street=apartment.street,
+        city=apartment.city,
+        total_area_sqm=apartment.living_area_sqm,
+        property_type=PropertyType.EINFAMILIEN,
+    )
+    db.add(prop)
+    db.flush()
+    apartment.property_id = prop.id
 
 
 @router.get("/dashboard", response_model=DashboardRead)
 def get_dashboard(db: Session = Depends(get_db)):
-    apartments = db.query(Apartment).options(joinedload(Apartment.rooms)).all()
+    apartments = db.query(Apartment).options(joinedload(Apartment.rooms), joinedload(Apartment.property)).all()
+    properties = db.query(Property).all()
     summaries: list[DashboardApartmentSummary] = []
+    property_summaries: list[DashboardPropertySummary] = []
     today = __import__("datetime").date.today()
 
     for apt in apartments:
@@ -54,8 +71,27 @@ def get_dashboard(db: Session = Depends(get_db)):
             DashboardApartmentSummary(
                 id=apt.id,
                 name=apt.name,
+                property_id=apt.property_id,
+                property_name=apt.property.name if apt.property else None,
                 room_count=len(apt.rooms),
                 active_lease_count=active_leases,
+                billing_years=sorted(years, reverse=True),
+            )
+        )
+
+    for prop in properties:
+        unit_count = db.query(Apartment).filter(Apartment.property_id == prop.id).count()
+        years = [
+            by.year
+            for by in db.query(PropertyBillingYear).filter(PropertyBillingYear.property_id == prop.id).all()
+        ]
+        property_summaries.append(
+            DashboardPropertySummary(
+                id=prop.id,
+                name=prop.name,
+                property_type=prop.property_type,
+                unit_count=unit_count,
+                total_area_sqm=prop.total_area_sqm,
                 billing_years=sorted(years, reverse=True),
             )
         )
@@ -63,6 +99,7 @@ def get_dashboard(db: Session = Depends(get_db)):
     landlord = db.query(LandlordProfile).first()
     return DashboardRead(
         apartments=summaries,
+        properties=property_summaries,
         landlord=LandlordProfileRead.model_validate(landlord) if landlord else None,
     )
 
@@ -75,20 +112,31 @@ def list_apartments(db: Session = Depends(get_db)):
 
 @router.post("/apartments", response_model=ApartmentRead, status_code=201)
 def create_apartment(payload: ApartmentCreate, db: Session = Depends(get_db)):
+    property_id = payload.property_id
+    if property_id:
+        prop = db.get(Property, property_id)
+        if not prop:
+            raise HTTPException(404, "Gebäude nicht gefunden")
+
     apartment = Apartment(
+        property_id=property_id,
         name=payload.name,
         street=payload.street,
         city=payload.city,
+        living_area_sqm=payload.living_area_sqm,
         iban=payload.iban,
         account_holder=payload.account_holder,
         payment_reference_hint=payload.payment_reference_hint,
     )
     db.add(apartment)
     db.flush()
+
+    if not property_id:
+        _ensure_property_for_apartment(db, apartment)
+
     for room in payload.rooms:
-        db.add(Room(apartment_id=apartment.id, name=room.name))
+        db.add(Room(apartment_id=apartment.id, name=room.name, area_sqm=room.area_sqm))
     db.commit()
-    db.refresh(apartment)
     apartment = db.query(Apartment).options(joinedload(Apartment.rooms)).filter(Apartment.id == apartment.id).one()
     return _apartment_to_read(apartment)
 
@@ -125,7 +173,7 @@ def add_room(apartment_id: int, payload: RoomCreate, db: Session = Depends(get_d
         raise HTTPException(404, "Wohnung nicht gefunden")
     if not payload.name.strip():
         raise HTTPException(400, "Zimmername darf nicht leer sein")
-    room = Room(apartment_id=apartment_id, name=payload.name.strip())
+    room = Room(apartment_id=apartment_id, name=payload.name.strip(), area_sqm=payload.area_sqm)
     db.add(room)
     db.commit()
     db.refresh(room)
