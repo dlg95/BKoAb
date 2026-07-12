@@ -22,3 +22,5 @@ cd frontend && pnpm install && cd ..
 ## Hinweis
 
 Dieses Tool unterstützt bei der Erstellung von Betriebskostenabrechnungen, ersetzt aber keine Rechtsberatung.
+
+Geplante Erweiterungen: [ROADMAP.md](ROADMAP.md)
