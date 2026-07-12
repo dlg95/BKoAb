@@ -74,12 +74,61 @@ def run_migrations(engine: Engine) -> None:
             if "has_document" not in cols:
                 conn.execute(text("ALTER TABLE invoices ADD COLUMN has_document BOOLEAN DEFAULT 0 NOT NULL"))
 
+            _migrate_invoices_nullable_billing_year(conn, engine)
+
         if _table_exists(engine, "rooms"):
             cols = _column_names(engine, "rooms")
             if "area_sqm" not in cols:
                 conn.execute(text("ALTER TABLE rooms ADD COLUMN area_sqm NUMERIC(10, 2)"))
 
         _backfill_properties(conn, engine)
+
+
+def _migrate_invoices_nullable_billing_year(conn, engine: Engine) -> None:
+    """SQLite legacy schema kept billing_year_id NOT NULL; property invoices need it nullable."""
+    if not _table_exists(engine, "invoices"):
+        return
+    rows = conn.execute(text("PRAGMA table_info(invoices)")).fetchall()
+    billing_col = next((row for row in rows if row[1] == "billing_year_id"), None)
+    if not billing_col or not billing_col[3]:
+        return
+
+    conn.execute(
+        text(
+            """
+            CREATE TABLE invoices__new (
+                id INTEGER PRIMARY KEY,
+                billing_year_id INTEGER REFERENCES billing_years(id) ON DELETE CASCADE,
+                property_billing_year_id INTEGER REFERENCES property_billing_years(id) ON DELETE CASCADE,
+                invoice_type VARCHAR(11) NOT NULL,
+                label VARCHAR(200) NOT NULL DEFAULT '',
+                amount NUMERIC(12, 2) NOT NULL,
+                period_start DATE NOT NULL,
+                period_end DATE NOT NULL,
+                note TEXT NOT NULL DEFAULT '',
+                allocation_key VARCHAR(20) NOT NULL DEFAULT 'personenmonate',
+                allocation_scope VARCHAR(20) NOT NULL DEFAULT 'unit',
+                has_document BOOLEAN NOT NULL DEFAULT 0
+            )
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            INSERT INTO invoices__new (
+                id, billing_year_id, property_billing_year_id, invoice_type, label, amount,
+                period_start, period_end, note, allocation_key, allocation_scope, has_document
+            )
+            SELECT
+                id, billing_year_id, property_billing_year_id, invoice_type, label, amount,
+                period_start, period_end, note, allocation_key, allocation_scope, has_document
+            FROM invoices
+            """
+        )
+    )
+    conn.execute(text("DROP TABLE invoices"))
+    conn.execute(text("ALTER TABLE invoices__new RENAME TO invoices"))
 
 
 def _backfill_properties(conn, engine: Engine) -> None:

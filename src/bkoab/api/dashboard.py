@@ -15,6 +15,7 @@ from bkoab.schemas import (
     LandlordProfileUpdate,
     RoomCreate,
     RoomRead,
+    RoomUpdate,
 )
 
 
@@ -27,33 +28,49 @@ router = APIRouter(prefix="/api", tags=["dashboard"])
 
 
 def _apartment_to_read(apartment: Apartment) -> ApartmentRead:
+    prop = apartment.property if hasattr(apartment, "property") else None
+    total_area = prop.total_area_sqm if prop and prop.total_area_sqm is not None else apartment.living_area_sqm
     return ApartmentRead(
         id=apartment.id,
         property_id=apartment.property_id,
         name=apartment.name,
         street=apartment.street,
         city=apartment.city,
+        total_area_sqm=total_area,
         living_area_sqm=apartment.living_area_sqm,
-        iban=apartment.iban,
-        account_holder=apartment.account_holder,
-        payment_reference_hint=apartment.payment_reference_hint,
         rooms=[RoomRead(id=r.id, name=r.name, area_sqm=r.area_sqm) for r in apartment.rooms],
     )
 
 
-def _ensure_property_for_apartment(db: Session, apartment: Apartment) -> None:
+def _sync_wg_property(db: Session, apartment: Apartment, *, total_area_sqm) -> None:
+    if not apartment.property_id:
+        return
+    prop = db.get(Property, apartment.property_id)
+    if not prop or prop.property_type != PropertyType.EINFAMILIEN:
+        return
+    prop.name = apartment.name
+    prop.street = apartment.street
+    prop.city = apartment.city
+    prop.total_area_sqm = total_area_sqm
+    apartment.living_area_sqm = total_area_sqm
+
+
+def _ensure_property_for_apartment(db: Session, apartment: Apartment, total_area_sqm=None) -> None:
     if apartment.property_id:
         return
+    area = total_area_sqm if total_area_sqm is not None else apartment.living_area_sqm
     prop = Property(
         name=apartment.name,
         street=apartment.street,
         city=apartment.city,
-        total_area_sqm=apartment.living_area_sqm,
+        total_area_sqm=area,
         property_type=PropertyType.EINFAMILIEN,
     )
     db.add(prop)
     db.flush()
     apartment.property_id = prop.id
+    if area is not None:
+        apartment.living_area_sqm = area
 
 
 @router.get("/dashboard", response_model=DashboardRead)
@@ -145,7 +162,11 @@ def get_dashboard(db: Session = Depends(get_db)):
 
 @router.get("/apartments", response_model=list[ApartmentRead])
 def list_apartments(db: Session = Depends(get_db)):
-    apartments = db.query(Apartment).options(joinedload(Apartment.rooms)).all()
+    apartments = (
+        db.query(Apartment)
+        .options(joinedload(Apartment.rooms), joinedload(Apartment.property))
+        .all()
+    )
     return [_apartment_to_read(a) for a in apartments]
 
 
@@ -162,21 +183,25 @@ def create_apartment(payload: ApartmentCreate, db: Session = Depends(get_db)):
         name=payload.name,
         street=payload.street,
         city=payload.city,
-        living_area_sqm=payload.living_area_sqm,
-        iban=payload.iban,
-        account_holder=payload.account_holder,
-        payment_reference_hint=payload.payment_reference_hint,
+        living_area_sqm=payload.total_area_sqm,
     )
     db.add(apartment)
     db.flush()
 
     if not property_id:
-        _ensure_property_for_apartment(db, apartment)
+        _ensure_property_for_apartment(db, apartment, payload.total_area_sqm)
+    elif payload.total_area_sqm is not None:
+        apartment.living_area_sqm = payload.total_area_sqm
 
     for room in payload.rooms:
         db.add(Room(apartment_id=apartment.id, name=room.name, area_sqm=room.area_sqm))
     db.commit()
-    apartment = db.query(Apartment).options(joinedload(Apartment.rooms)).filter(Apartment.id == apartment.id).one()
+    apartment = (
+        db.query(Apartment)
+        .options(joinedload(Apartment.rooms), joinedload(Apartment.property))
+        .filter(Apartment.id == apartment.id)
+        .one()
+    )
     return _apartment_to_read(apartment)
 
 
@@ -184,7 +209,7 @@ def create_apartment(payload: ApartmentCreate, db: Session = Depends(get_db)):
 def get_apartment(apartment_id: int, db: Session = Depends(get_db)):
     apartment = (
         db.query(Apartment)
-        .options(joinedload(Apartment.rooms))
+        .options(joinedload(Apartment.rooms), joinedload(Apartment.property))
         .filter(Apartment.id == apartment_id)
         .first()
     )
@@ -199,9 +224,18 @@ def update_apartment(apartment_id: int, payload: ApartmentUpdate, db: Session = 
     if not apartment:
         raise HTTPException(404, "Wohnung nicht gefunden")
     for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(apartment, field, value)
+        if field in ("total_area_sqm", "living_area_sqm"):
+            apartment.living_area_sqm = value
+        else:
+            setattr(apartment, field, value)
+    _sync_wg_property(db, apartment, total_area_sqm=apartment.living_area_sqm)
     db.commit()
-    apartment = db.query(Apartment).options(joinedload(Apartment.rooms)).filter(Apartment.id == apartment_id).one()
+    apartment = (
+        db.query(Apartment)
+        .options(joinedload(Apartment.rooms), joinedload(Apartment.property))
+        .filter(Apartment.id == apartment_id)
+        .one()
+    )
     return _apartment_to_read(apartment)
 
 
@@ -214,6 +248,20 @@ def add_room(apartment_id: int, payload: RoomCreate, db: Session = Depends(get_d
         raise HTTPException(400, "Zimmername darf nicht leer sein")
     room = Room(apartment_id=apartment_id, name=payload.name.strip(), area_sqm=payload.area_sqm)
     db.add(room)
+    db.commit()
+    db.refresh(room)
+    return RoomRead.model_validate(room)
+
+
+@router.put("/rooms/{room_id}", response_model=RoomRead)
+def update_room(room_id: int, payload: RoomUpdate, db: Session = Depends(get_db)):
+    room = db.get(Room, room_id)
+    if not room:
+        raise HTTPException(404, "Zimmer nicht gefunden")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        if field == "name" and value is not None and not str(value).strip():
+            raise HTTPException(400, "Zimmername darf nicht leer sein")
+        setattr(room, field, value.strip() if field == "name" and isinstance(value, str) else value)
     db.commit()
     db.refresh(room)
     return RoomRead.model_validate(room)

@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { api } from "@/lib/api"
-import { ALLOCATION_PER_INVOICE_HINT, BILLING_LABELS } from "@/lib/billing-labels"
+import { ALLOCATION_PER_INVOICE_HINT, BILLING_LABELS, TOP_UNIT_STAMMDATEN } from "@/lib/billing-labels"
 
 export function ApartmentsPage() {
   const queryClient = useQueryClient()
@@ -16,6 +16,7 @@ export function ApartmentsPage() {
     name: "",
     street: "",
     city: "",
+    total_area_sqm: "",
   })
 
   const createMutation = useMutation({
@@ -24,11 +25,12 @@ export function ApartmentsPage() {
         name: form.name,
         street: form.street,
         city: form.city,
+        total_area_sqm: form.total_area_sqm || null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["apartments"] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
-      setForm({ name: "", street: "", city: "" })
+      setForm({ name: "", street: "", city: "", total_area_sqm: "" })
     },
   })
 
@@ -47,16 +49,25 @@ export function ApartmentsPage() {
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label>Name</Label>
+            <Label>{TOP_UNIT_STAMMDATEN.name}</Label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </div>
           <div className="space-y-2">
-            <Label>Straße</Label>
+            <Label>{TOP_UNIT_STAMMDATEN.street}</Label>
             <Input value={form.street} onChange={(e) => setForm({ ...form, street: e.target.value })} />
           </div>
           <div className="space-y-2">
-            <Label>PLZ / Ort</Label>
+            <Label>{TOP_UNIT_STAMMDATEN.city}</Label>
             <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+          </div>
+          <div className="space-y-2">
+            <Label>{TOP_UNIT_STAMMDATEN.total_area_sqm}</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={form.total_area_sqm}
+              onChange={(e) => setForm({ ...form, total_area_sqm: e.target.value })}
+            />
           </div>
           <div className="md:col-span-2">
             <Button
@@ -76,7 +87,10 @@ export function ApartmentsPage() {
               <div>
                 <p className="font-medium">{apt.name}</p>
                 <p className="text-sm text-muted-foreground">
-                  {apt.street}, {apt.city} · {apt.rooms.length} {BILLING_LABELS.wg.subUnitPlural}
+                  {apt.street}, {apt.city}
+                  {apt.total_area_sqm ? ` · ${apt.total_area_sqm} m²` : ""}
+                  {" · "}
+                  {apt.rooms.length} {BILLING_LABELS.wg.subUnitPlural}
                 </p>
               </div>
               <div className="flex gap-2">

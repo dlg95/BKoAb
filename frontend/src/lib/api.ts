@@ -21,10 +21,8 @@ export type Apartment = {
   name: string
   street: string
   city: string
+  total_area_sqm: string | null
   living_area_sqm: string | null
-  iban: string
-  account_holder: string
-  payment_reference_hint: string
   rooms: { id: number; name: string; area_sqm: string | null }[]
 }
 
@@ -172,6 +170,11 @@ export const api = {
       body: JSON.stringify({ name, area_sqm: area_sqm || null }),
     }),
   deleteRoom: (roomId: number) => request<void>(`/rooms/${roomId}`, { method: "DELETE" }),
+  updateRoom: (roomId: number, data: { name?: string; area_sqm?: string | null }) =>
+    request<{ id: number; name: string; area_sqm: string | null }>(`/rooms/${roomId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
   deleteApartment: (id: number) => request<void>(`/apartments/${id}`, { method: "DELETE" }),
   properties: () => request<Property[]>("/properties"),
   createProperty: (data: object) => request<Property>("/properties", { method: "POST", body: JSON.stringify(data) }),

@@ -1,5 +1,5 @@
 import { Outlet } from "react-router-dom"
-import { Building2, Coffee, FileText, Settings } from "lucide-react"
+import { Building2, Coffee, FileText, Landmark, LayoutDashboard, Settings } from "lucide-react"
 
 import { LinkButton } from "@/components/link-button"
 import { buttonVariants } from "@/components/ui/button"
@@ -36,6 +36,7 @@ export function Layout() {
           <Separator orientation="vertical" className="h-6" />
           <nav className="flex gap-2">
             <LinkButton variant="ghost" size="sm" to="/">
+              <LayoutDashboard className="mr-1 size-4" />
               Abrechnungs-Dashboard
             </LinkButton>
             <LinkButton variant="ghost" size="sm" to="/wohnungen">
@@ -43,6 +44,7 @@ export function Layout() {
               WG-Wohnungen
             </LinkButton>
             <LinkButton variant="ghost" size="sm" to="/gebaeude">
+              <Landmark className="mr-1 size-4" />
               Gebäude
             </LinkButton>
             <LinkButton variant="ghost" size="sm" to="/einstellungen">

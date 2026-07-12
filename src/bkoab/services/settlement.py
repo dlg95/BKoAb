@@ -10,6 +10,7 @@ from bkoab.models import (
     BillingYear,
     Invoice,
     Lease,
+    Property,
     PropertyBillingYear,
     Room,
     Tenant,
@@ -104,15 +105,20 @@ def _unit_area_share(
     lease_id: int,
     active_lease_ids: list[int],
     lease_room_areas: dict[int, Decimal],
+    property_total_area_sqm: Decimal | None = None,
 ) -> tuple[Decimal, Decimal, Decimal]:
-    room_area, total_area, ratio = compute_room_area_shares(lease_room_areas, lease_id)
-    if total_area > 0 and room_area > 0:
-        return room_area, total_area, _money(prorated * ratio)
+    room_area, room_total, ratio = compute_room_area_shares(lease_room_areas, lease_id)
+    if room_area > 0 and property_total_area_sqm and property_total_area_sqm > 0:
+        return room_area, property_total_area_sqm, _money(prorated * room_area / property_total_area_sqm)
+    if room_total > 0 and room_area > 0:
+        return room_area, room_total, _money(prorated * ratio)
 
     count = len(active_lease_ids)
     if count > 0 and lease_id in active_lease_ids:
+        if property_total_area_sqm and property_total_area_sqm > 0:
+            return Decimal("1"), property_total_area_sqm, _money(prorated / Decimal(count))
         return Decimal("1"), Decimal(count), _money(prorated / Decimal(count))
-    return Decimal("0"), Decimal(count), Decimal("0")
+    return Decimal("0"), property_total_area_sqm or Decimal(count), Decimal("0")
 
 
 def build_settlement_preview(db: Session, apartment_id: int, year: int) -> SettlementPreview:
@@ -161,14 +167,24 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
     total_property_area: Decimal | None = None
     property_share_ratio = Decimal("0")
     processed_property: list[ProcessedInvoice] = []
+    property_total_area: Decimal | None = None
 
     if apartment.property_id:
+        prop = db.get(Property, apartment.property_id)
+        property_total_area = _decimal_or_zero(prop.total_area_sqm) if prop else None
+        if property_total_area <= 0:
+            property_total_area = None
+
         property_units = _property_units(db, apartment.property_id)
         unit_areas = [
             UnitArea(unit_id=u.id, living_area_sqm=_decimal_or_zero(u.living_area_sqm))
             for u in property_units
         ]
-        unit_area, total_property_area, property_share_ratio = compute_area_shares(unit_areas, apartment_id)
+        unit_area, total_property_area, property_share_ratio = compute_area_shares(
+            unit_areas,
+            apartment_id,
+            property_total_area,
+        )
 
         if total_property_area <= 0:
             warnings.append("Keine Wohnflächen am Gebäude hinterlegt — Hauskosten können nicht verteilt werden")
@@ -230,7 +246,11 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
                 )
             else:
                 numerator, denominator, share = _unit_area_share(
-                    inv.total_prorated, lease_id, active_lease_ids, lease_room_areas
+                    inv.total_prorated,
+                    lease_id,
+                    active_lease_ids,
+                    lease_room_areas,
+                    property_total_area,
                 )
             cost_lines.append(
                 CostLineItem(

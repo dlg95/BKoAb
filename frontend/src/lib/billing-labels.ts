@@ -40,6 +40,13 @@ export function labelsFor(kind: BillingKind) {
   return BILLING_LABELS[kind]
 }
 
+export const TOP_UNIT_STAMMDATEN = {
+  name: "Bezeichnung",
+  street: "Straße",
+  city: "PLZ / Ort",
+  total_area_sqm: "Gesamtfläche (m²)",
+} as const
+
 export function subUnitLabel(kind: BillingKind, count: number) {
   const labels = labelsFor(kind)
   return count === 1 ? labels.subUnit : labels.subUnitPlural

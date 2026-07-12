@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { api } from "@/lib/api"
-import { ALLOCATION_PER_INVOICE_HINT, BILLING_LABELS } from "@/lib/billing-labels"
+import { ALLOCATION_PER_INVOICE_HINT, BILLING_LABELS, TOP_UNIT_STAMMDATEN } from "@/lib/billing-labels"
 
 export function ApartmentDetailPage() {
   const { id } = useParams()
@@ -27,12 +27,10 @@ export function ApartmentDetailPage() {
     name: "",
     street: "",
     city: "",
-    living_area_sqm: "",
-    iban: "",
-    account_holder: "",
-    payment_reference_hint: "",
+    total_area_sqm: "",
   })
   const [newRoomName, setNewRoomName] = useState("")
+  const [roomDrafts, setRoomDrafts] = useState<Record<number, { name: string; area_sqm: string }>>({})
 
   useEffect(() => {
     if (apartment) {
@@ -40,17 +38,29 @@ export function ApartmentDetailPage() {
         name: apartment.name,
         street: apartment.street,
         city: apartment.city,
-        living_area_sqm: apartment.living_area_sqm || "",
-        iban: apartment.iban,
-        account_holder: apartment.account_holder,
-        payment_reference_hint: apartment.payment_reference_hint,
+        total_area_sqm: apartment.total_area_sqm || "",
       })
+      setRoomDrafts(
+        Object.fromEntries(
+          apartment.rooms.map((room) => [
+            room.id,
+            { name: room.name, area_sqm: room.area_sqm || "" },
+          ]),
+        ),
+      )
     }
   }, [apartment])
 
   const saveMutation = useMutation({
-    mutationFn: () => api.updateApartment(apartmentId, form),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["apartment", apartmentId] }),
+    mutationFn: () =>
+      api.updateApartment(apartmentId, {
+        ...form,
+        total_area_sqm: form.total_area_sqm || null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["apartment", apartmentId] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    },
   })
 
   const addRoomMutation = useMutation({
@@ -64,6 +74,20 @@ export function ApartmentDetailPage() {
 
   const deleteRoomMutation = useMutation({
     mutationFn: (roomId: number) => api.deleteRoom(roomId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["apartment", apartmentId] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    },
+  })
+
+  const saveRoomMutation = useMutation({
+    mutationFn: (roomId: number) => {
+      const draft = roomDrafts[roomId]
+      return api.updateRoom(roomId, {
+        name: draft.name,
+        area_sqm: draft.area_sqm || null,
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["apartment", apartmentId] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
@@ -88,23 +112,28 @@ export function ApartmentDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Stammdaten & Bankverbindung</CardTitle>
+          <CardTitle>Stammdaten</CardTitle>
+          <CardDescription>
+            Gesamtfläche dient als Nenner bei m²-Kostenverteilungen.
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
           {(
             [
-              ["name", "Name"],
-              ["street", "Straße"],
-              ["city", "PLZ / Ort"],
-              ["living_area_sqm", "Wohnfläche (m²)"],
-              ["iban", "IBAN"],
-              ["account_holder", "Kontoinhaber"],
-              ["payment_reference_hint", "Verwendungszweck-Hinweis"],
+              ["name", TOP_UNIT_STAMMDATEN.name],
+              ["street", TOP_UNIT_STAMMDATEN.street],
+              ["city", TOP_UNIT_STAMMDATEN.city],
+              ["total_area_sqm", TOP_UNIT_STAMMDATEN.total_area_sqm],
             ] as const
           ).map(([key, label]) => (
             <div className="space-y-2" key={key}>
               <Label>{label}</Label>
-              <Input value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
+              <Input
+                type={key === "total_area_sqm" ? "number" : "text"}
+                step={key === "total_area_sqm" ? "0.01" : undefined}
+                value={form[key]}
+                onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+              />
             </div>
           ))}
           <div className="md:col-span-2">
@@ -115,7 +144,7 @@ export function ApartmentDetailPage() {
         </CardContent>
       </Card>
 
-      <BillingYearsCard apartmentId={apartmentId} apartmentName={apartment.name} />
+      <BillingYearsCard apartmentId={apartmentId} unitName={apartment.name} />
 
       <Card>
         <CardHeader>
@@ -132,30 +161,64 @@ export function ApartmentDetailPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{BILLING_LABELS.wg.subUnit}</TableHead>
-                <TableHead className="w-24" />
+                <TableHead>Bezeichnung</TableHead>
+                <TableHead>Fläche (m²)</TableHead>
+                <TableHead className="w-32" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {apartment.rooms.map((room) => (
-                <TableRow key={room.id}>
-                  <TableCell>
-                    {room.name}
-                  </TableCell>
-                  <TableCell className="w-24">
-                    {apartment.rooms.length > 1 && (
+              {apartment.rooms.map((room) => {
+                const draft = roomDrafts[room.id] ?? { name: room.name, area_sqm: room.area_sqm || "" }
+                return (
+                  <TableRow key={room.id}>
+                    <TableCell>
+                      <Input
+                        value={draft.name}
+                        onChange={(e) =>
+                          setRoomDrafts({
+                            ...roomDrafts,
+                            [room.id]: { ...draft, name: e.target.value },
+                          })
+                        }
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={draft.area_sqm}
+                        onChange={(e) =>
+                          setRoomDrafts({
+                            ...roomDrafts,
+                            [room.id]: { ...draft, area_sqm: e.target.value },
+                          })
+                        }
+                        className="w-32"
+                      />
+                    </TableCell>
+                    <TableCell className="space-x-1">
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
-                        onClick={() => deleteRoomMutation.mutate(room.id)}
-                        disabled={deleteRoomMutation.isPending}
+                        onClick={() => saveRoomMutation.mutate(room.id)}
+                        disabled={saveRoomMutation.isPending || !draft.name.trim()}
                       >
-                        Entfernen
+                        Speichern
                       </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+                      {apartment.rooms.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteRoomMutation.mutate(room.id)}
+                          disabled={deleteRoomMutation.isPending}
+                        >
+                          Entfernen
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
 

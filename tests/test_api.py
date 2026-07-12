@@ -283,6 +283,52 @@ def test_export_single_party_docx(client):
     assert len(response.content) > 1000
 
 
+def test_create_property_defaults_property_type_to_mfh(client):
+    response = client.post(
+        "/api/properties",
+        json={
+            "name": "Testgebäude",
+            "street": "Teststraße 1",
+            "city": "12345 Berlin",
+            "total_area_sqm": "200",
+        },
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["property_type"] == "mfh"
+    assert data["property_type_label"] == "Mehrfamilienhaus"
+
+
+def test_mfh_property_invoice_without_units_or_leases(client):
+    prop = client.post(
+        "/api/properties",
+        json={
+            "name": "Leerstand Haus",
+            "street": "Testweg 1",
+            "city": "12345 Berlin",
+            "total_area_sqm": "200",
+        },
+    )
+    assert prop.status_code == 201
+    property_id = prop.json()["id"]
+    client.post(f"/api/properties/{property_id}/billing-years", json={"year": 2025})
+
+    invoice = client.post(
+        f"/api/properties/{property_id}/billing-years/2025/invoices",
+        json={
+            "invoice_type": "grundsteuer",
+            "amount": "500",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+        },
+    )
+    assert invoice.status_code == 201
+    data = invoice.json()
+    assert data["amount"] == "500.00"
+    assert data["property_billing_year_id"] is not None
+    assert data["billing_year_id"] is None
+
+
 def test_mfh_property_invoice_distribution(client):
     prop = client.post(
         "/api/properties",

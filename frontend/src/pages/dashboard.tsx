@@ -25,13 +25,13 @@ export function DashboardPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <LinkButton variant="outline" to="/wohnungen">
+          <LinkButton to="/wohnungen">
             <Plus className="mr-1 size-4" />
             WG-Wohnung anlegen
           </LinkButton>
-          <LinkButton variant="outline" to="/gebaeude">
+          <LinkButton to="/gebaeude">
             <Plus className="mr-1 size-4" />
-            Gebäude anlegen
+            MFH anlegen
           </LinkButton>
         </div>
       </div>
@@ -60,33 +60,27 @@ export function DashboardPage() {
                     {unit.total_area_sqm ? ` · ${unit.total_area_sqm} m²` : ""}
                   </p>
                 </div>
-                <LinkButton size="sm" variant="outline" to={detailPath}>
-                  {labels.manageTop}
-                </LinkButton>
+                <div className="flex flex-wrap gap-2">
+                  <LinkButton size="sm" variant="outline" to={detailPath}>
+                    {labels.manageTop}
+                  </LinkButton>
+                  <LinkButton
+                    size="sm"
+                    to={
+                      unit.kind === "wg" && unit.apartment_id
+                        ? `/wohnungen/${unit.apartment_id}/mietparteien`
+                        : `/gebaeude/${unit.property_id}/mietparteien`
+                    }
+                  >
+                    Mietparteien
+                  </LinkButton>
+                </div>
               </div>
 
               {unit.kind === "wg" && unit.apartment_id ? (
-                <BillingYearsCard apartmentId={unit.apartment_id} apartmentName={unit.name} kind="wg" />
+                <BillingYearsCard apartmentId={unit.apartment_id} unitName={unit.name} kind="wg" />
               ) : (
-                <Card>
-                  <CardContent className="flex flex-wrap items-center gap-2 py-4">
-                    <span className="text-sm text-muted-foreground">Haus-Abrechnungsjahre:</span>
-                    {unit.billing_years.length > 0 ? (
-                      unit.billing_years.map((year) => (
-                        <LinkButton
-                          key={year}
-                          variant="outline"
-                          size="sm"
-                          to={`/gebaeude/${unit.property_id}/abrechnung/${year}`}
-                        >
-                          {year}
-                        </LinkButton>
-                      ))
-                    ) : (
-                      <span className="text-sm text-muted-foreground">Noch keine Haus-Abrechnung angelegt.</span>
-                    )}
-                  </CardContent>
-                </Card>
+                <BillingYearsCard propertyId={unit.property_id} unitName={unit.name} kind="mfh" />
               )}
             </div>
           )

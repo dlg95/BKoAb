@@ -7,16 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { api } from "@/lib/api"
-import { ALLOCATION_PER_INVOICE_HINT, BILLING_LABELS } from "@/lib/billing-labels"
-
-const PROPERTY_TYPES = [
-  { value: "mfh", label: "Mehrfamilienhaus" },
-  { value: "weg", label: "WEG" },
-] as const
-
-const TYPE_ITEMS = Object.fromEntries(PROPERTY_TYPES.map((t) => [t.value, t.label]))
+import { ALLOCATION_PER_INVOICE_HINT, BILLING_LABELS, TOP_UNIT_STAMMDATEN } from "@/lib/billing-labels"
 
 export function PropertiesPage() {
   const queryClient = useQueryClient()
@@ -27,19 +19,20 @@ export function PropertiesPage() {
     street: "",
     city: "",
     total_area_sqm: "",
-    property_type: "mfh",
   })
 
   const createMutation = useMutation({
     mutationFn: () =>
       api.createProperty({
-        ...form,
+        name: form.name,
+        street: form.street,
+        city: form.city,
         total_area_sqm: form.total_area_sqm || null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["properties"] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
-      setForm({ name: "", street: "", city: "", total_area_sqm: "", property_type: "mfh" })
+      setForm({ name: "", street: "", city: "", total_area_sqm: "" })
     },
   })
 
@@ -56,28 +49,19 @@ export function PropertiesPage() {
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label>Name</Label>
+            <Label>{TOP_UNIT_STAMMDATEN.name}</Label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </div>
           <div className="space-y-2">
-            <Label>Typ</Label>
-            <Select value={form.property_type} items={TYPE_ITEMS} onValueChange={(v) => v && setForm({ ...form, property_type: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {PROPERTY_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Straße</Label>
+            <Label>{TOP_UNIT_STAMMDATEN.street}</Label>
             <Input value={form.street} onChange={(e) => setForm({ ...form, street: e.target.value })} />
           </div>
           <div className="space-y-2">
-            <Label>PLZ / Ort</Label>
+            <Label>{TOP_UNIT_STAMMDATEN.city}</Label>
             <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
           </div>
           <div className="space-y-2">
-            <Label>Gesamtfläche (m²)</Label>
+            <Label>{TOP_UNIT_STAMMDATEN.total_area_sqm}</Label>
             <Input type="number" step="0.01" value={form.total_area_sqm} onChange={(e) => setForm({ ...form, total_area_sqm: e.target.value })} />
           </div>
           <div className="md:col-span-2">
@@ -99,7 +83,12 @@ export function PropertiesPage() {
                   {prop.total_area_sqm ? ` · ${prop.total_area_sqm} m² gesamt` : ""}
                 </p>
               </div>
-              <LinkButton to={`/gebaeude/${prop.id}`}>Verwalten</LinkButton>
+              <div className="flex gap-2">
+                <LinkButton to={`/gebaeude/${prop.id}`}>Bearbeiten</LinkButton>
+                <LinkButton variant="outline" to={`/gebaeude/${prop.id}/mietparteien`}>
+                  Mietparteien
+                </LinkButton>
+              </div>
             </CardContent>
           </Card>
         ))}

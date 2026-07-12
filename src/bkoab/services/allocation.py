@@ -97,12 +97,17 @@ class UnitArea:
 def compute_area_shares(
     units: list[UnitArea],
     target_unit_id: int,
+    property_total_area_sqm: Decimal | None = None,
 ) -> tuple[Decimal, Decimal, Decimal]:
-    total = sum((u.living_area_sqm for u in units if u.living_area_sqm > 0), Decimal("0"))
+    """Returns (unit_area, total_area, share_ratio). Total prefers property Gesamt-m²."""
     unit_area = next(
         (u.living_area_sqm for u in units if u.unit_id == target_unit_id),
         Decimal("0"),
     )
+    if property_total_area_sqm and property_total_area_sqm > 0:
+        total = property_total_area_sqm
+    else:
+        total = sum((u.living_area_sqm for u in units if u.living_area_sqm > 0), Decimal("0"))
     if total <= 0 or unit_area <= 0:
         return unit_area, total, Decimal("0")
     share = (unit_area / total).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)

@@ -41,16 +41,16 @@ def _property_to_read(prop: Property, db: Session) -> PropertyRead:
 
 
 def _apartment_to_read(apartment: Apartment) -> ApartmentRead:
+    prop = apartment.property if hasattr(apartment, "property") else None
+    total_area = prop.total_area_sqm if prop and prop.total_area_sqm is not None else apartment.living_area_sqm
     return ApartmentRead(
         id=apartment.id,
         property_id=apartment.property_id,
         name=apartment.name,
         street=apartment.street,
         city=apartment.city,
+        total_area_sqm=total_area,
         living_area_sqm=apartment.living_area_sqm,
-        iban=apartment.iban,
-        account_holder=apartment.account_holder,
-        payment_reference_hint=apartment.payment_reference_hint,
         rooms=[RoomRead(id=r.id, name=r.name, area_sqm=r.area_sqm) for r in apartment.rooms],
     )
 
@@ -120,19 +120,24 @@ def create_unit(property_id: int, payload: ApartmentCreate, db: Session = Depend
         name=payload.name,
         street=payload.street or prop.street,
         city=payload.city or prop.city,
-        living_area_sqm=payload.living_area_sqm,
-        iban=payload.iban,
-        account_holder=payload.account_holder,
-        payment_reference_hint=payload.payment_reference_hint,
+        living_area_sqm=payload.living_area_sqm or payload.total_area_sqm,
     )
     db.add(apartment)
     db.flush()
+    if not payload.rooms:
+        db.add(
+            Room(
+                apartment_id=apartment.id,
+                name="Wohnung",
+                area_sqm=payload.living_area_sqm or payload.total_area_sqm,
+            )
+        )
     for room in payload.rooms:
         db.add(Room(apartment_id=apartment.id, name=room.name, area_sqm=room.area_sqm))
     db.commit()
     apartment = (
         db.query(Apartment)
-        .options(joinedload(Apartment.rooms))
+        .options(joinedload(Apartment.rooms), joinedload(Apartment.property))
         .filter(Apartment.id == apartment.id)
         .one()
     )

@@ -277,7 +277,7 @@ export function BillingPage() {
       )}
 
       {billingYearMissing ? (
-        <BillingYearsCard apartmentId={apartmentId} apartmentName={apartment?.name} />
+        <BillingYearsCard apartmentId={apartmentId} unitName={apartment?.name} />
       ) : (
       <Tabs defaultValue="rechnungen">
         <TabsList>
@@ -394,7 +394,7 @@ export function BillingPage() {
 
           <Card>
             <CardContent className="pt-6">
-              <Table>
+              <Table className="min-w-max table-auto">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Art</TableHead>
@@ -404,12 +404,14 @@ export function BillingPage() {
                     <TableHead>Anteil {billingYear}</TableHead>
                     <TableHead>Beleg</TableHead>
                     <TableHead>Zeitraum</TableHead>
-                    <TableHead className="w-0" />
+                    <TableHead className="sticky right-0 z-10 min-w-[11rem] border-l bg-card">
+                      Aktionen
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {invoices?.map((inv) => (
-                    <TableRow key={inv.id}>
+                    <TableRow key={inv.id} className="group">
                       <TableCell>{inv.invoice_type_label}</TableCell>
                       <TableCell>{inv.allocation_key_label}</TableCell>
                       <TableCell>{inv.label || "—"}</TableCell>
@@ -421,7 +423,7 @@ export function BillingPage() {
                         ) : "—"}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{inv.period_start} – {inv.period_end}</TableCell>
-                      <TableCell className="w-0 space-x-1">
+                      <TableCell className="sticky right-0 z-10 min-w-[11rem] space-x-1 border-l bg-card group-hover:bg-muted/50">
                         <Button variant="outline" size="sm" onClick={() => startEditInvoice(inv)}>
                           Bearbeiten
                         </Button>

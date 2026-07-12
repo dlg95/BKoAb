@@ -98,6 +98,11 @@ class RoomCreate(BaseModel):
     area_sqm: Decimal | None = None
 
 
+class RoomUpdate(BaseModel):
+    name: str | None = None
+    area_sqm: Decimal | None = None
+
+
 class RoomRead(BaseModel):
     id: int
     name: str
@@ -158,10 +163,8 @@ class ApartmentCreate(BaseModel):
     name: str
     street: str = ""
     city: str = ""
+    total_area_sqm: Decimal | None = None
     living_area_sqm: Decimal | None = None
-    iban: str = ""
-    account_holder: str = ""
-    payment_reference_hint: str = ""
     rooms: list[RoomCreate] = Field(default_factory=list)
     property_id: int | None = None
 
@@ -170,10 +173,8 @@ class ApartmentUpdate(BaseModel):
     name: str | None = None
     street: str | None = None
     city: str | None = None
+    total_area_sqm: Decimal | None = None
     living_area_sqm: Decimal | None = None
-    iban: str | None = None
-    account_holder: str | None = None
-    payment_reference_hint: str | None = None
 
 
 class ApartmentRead(BaseModel):
@@ -182,10 +183,8 @@ class ApartmentRead(BaseModel):
     name: str
     street: str
     city: str
-    living_area_sqm: Decimal | None
-    iban: str
-    account_holder: str
-    payment_reference_hint: str
+    total_area_sqm: Decimal | None
+    living_area_sqm: Decimal | None = None
     rooms: list[RoomRead] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
