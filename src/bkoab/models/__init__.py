@@ -20,6 +20,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from bkoab.database import Base
 
 
+def _str_enum(enum_cls, **kwargs):
+    return mapped_column(
+        Enum(enum_cls, values_callable=lambda members: [member.value for member in members]),
+        **kwargs,
+    )
+
+
 class BillingStatus(str, enum.Enum):
     DRAFT = "draft"
     FINALIZED = "finalized"
@@ -80,8 +87,8 @@ class Property(Base):
     city: Mapped[str] = mapped_column(String(200), default="")
     total_area_sqm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     common_area_sqm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
-    property_type: Mapped[PropertyType] = mapped_column(
-        Enum(PropertyType), default=PropertyType.EINFAMILIEN
+    property_type: Mapped[PropertyType] = _str_enum(
+        PropertyType, default=PropertyType.EINFAMILIEN
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -213,11 +220,11 @@ class Invoice(Base):
         ForeignKey("property_billing_years.id", ondelete="CASCADE"), nullable=True
     )
     invoice_type: Mapped[InvoiceType] = mapped_column(Enum(InvoiceType))
-    allocation_key: Mapped[AllocationKey] = mapped_column(
-        Enum(AllocationKey), default=AllocationKey.PERSONENMONATE
+    allocation_key: Mapped[AllocationKey] = _str_enum(
+        AllocationKey, default=AllocationKey.PERSONENMONATE
     )
-    allocation_scope: Mapped[AllocationScope] = mapped_column(
-        Enum(AllocationScope), default=AllocationScope.UNIT
+    allocation_scope: Mapped[AllocationScope] = _str_enum(
+        AllocationScope, default=AllocationScope.UNIT
     )
     label: Mapped[str] = mapped_column(String(200), default="")
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
