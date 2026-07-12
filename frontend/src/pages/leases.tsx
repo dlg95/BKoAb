@@ -13,9 +13,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { api } from "@/lib/api"
 
 function formatPersonPeriods(lease: { person_periods: { valid_from: string; valid_to: string | null; persons: number }[]; persons: number }) {
-  if (!lease.person_periods.length) return `${lease.persons} Köpfe`
+  if (!lease.person_periods.length) return `${lease.persons} Personen`
   return lease.person_periods
-    .map((p) => `${p.persons} Köpfe (${p.valid_from}${p.valid_to ? `–${p.valid_to}` : "–…"})`)
+    .map((p) => `${p.persons} Personen (${p.valid_from}${p.valid_to ? `–${p.valid_to}` : "–…"})`)
     .join(", ")
 }
 
@@ -87,7 +87,7 @@ export function LeasesPage() {
         <CardHeader>
           <CardTitle>Neuer Mietvertrag</CardTitle>
           <CardDescription>
-            Die anfängliche Kopfzahl gilt für den gesamten Mietzeitraum. Änderungen später unter „Kopfzahl bearbeiten“.
+            Die anfängliche Personenzahl gilt für den gesamten Mietzeitraum. Änderungen später unter „Personenzahl bearbeiten“.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
@@ -156,7 +156,7 @@ export function LeasesPage() {
               <TableRow>
                 <TableHead>Mieter</TableHead>
                 <TableHead>Zimmer</TableHead>
-                <TableHead>Kopfzahl-Zeiträume</TableHead>
+                <TableHead>Personenzahl-Zeiträume</TableHead>
                 <TableHead>Einzug</TableHead>
                 <TableHead>Auszug</TableHead>
                 <TableHead className="w-0" />
@@ -174,7 +174,7 @@ export function LeasesPage() {
                   <TableCell>{lease.move_out || "—"}</TableCell>
                   <TableCell className="w-0 space-x-1">
                     <Button variant="outline" size="sm" onClick={() => setEditingLeaseId(lease.id)}>
-                      Kopfzahl
+                      Personenzahl
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate(lease.id)}>
                       Löschen

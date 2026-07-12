@@ -22,29 +22,29 @@ def ensure_default_person_periods(lease: Lease, db) -> list[LeasePersonPeriod]:
 
 def validate_person_periods(lease: Lease, periods: list[PersonPeriodCreate]) -> None:
     if not periods:
-        raise ValueError("Mindestens ein Kopfzahl-Zeitraum erforderlich")
+        raise ValueError("Mindestens ein Personenzahl-Zeitraum erforderlich")
 
     sorted_periods = sorted(periods, key=lambda p: p.valid_from)
 
     for period in sorted_periods:
         if period.persons < 1:
-            raise ValueError("Kopfzahl muss mindestens 1 sein")
+            raise ValueError("Personenzahl muss mindestens 1 sein")
         if period.valid_from < lease.move_in:
-            raise ValueError("Kopfzahl-Zeitraum beginnt vor Einzug")
+            raise ValueError("Personenzahl-Zeitraum beginnt vor Einzug")
         if lease.move_out and period.valid_to and period.valid_to > lease.move_out:
-            raise ValueError("Kopfzahl-Zeitraum endet nach Auszug")
+            raise ValueError("Personenzahl-Zeitraum endet nach Auszug")
         if period.valid_to and period.valid_from > period.valid_to:
-            raise ValueError("Ungültiger Kopfzahl-Zeitraum")
+            raise ValueError("Ungültiger Personenzahl-Zeitraum")
 
     if sorted_periods[0].valid_from != lease.move_in:
-        raise ValueError("Erster Kopfzahl-Zeitraum muss am Einzug beginnen")
+        raise ValueError("Erster Personenzahl-Zeitraum muss am Einzug beginnen")
 
     for index, period in enumerate(sorted_periods):
         is_last = index == len(sorted_periods) - 1
 
         if lease.move_out:
             if is_last and period.valid_to != lease.move_out:
-                raise ValueError("Letzter Kopfzahl-Zeitraum muss am Auszug enden")
+                raise ValueError("Letzter Personenzahl-Zeitraum muss am Auszug enden")
             if not is_last and period.valid_to is None:
                 raise ValueError("Nur der letzte Zeitraum darf offen enden")
         elif is_last and period.valid_to is not None:
@@ -55,7 +55,7 @@ def validate_person_periods(lease: Lease, periods: list[PersonPeriodCreate]) -> 
             if period.valid_to is None:
                 raise ValueError("Nur der letzte Zeitraum darf offen enden")
             if next_period.valid_from != period.valid_to + timedelta(days=1):
-                raise ValueError("Kopfzahl-Zeiträume müssen lückenlos aufeinander folgen")
+                raise ValueError("Personenzahl-Zeiträume müssen lückenlos aufeinander folgen")
 
 
 def lease_to_allocation_period(lease: Lease) -> LeasePeriod:

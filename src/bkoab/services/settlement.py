@@ -71,7 +71,7 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
 
     warnings: list[str] = []
     if total_head_months == 0:
-        warnings.append("Keine Kopfmonate im Abrechnungszeitraum ermittelt")
+        warnings.append("Keine Personenmonate im Abrechnungszeitraum ermittelt")
 
     invoices = db.query(Invoice).filter(Invoice.billing_year_id == billing_year.id).all()
     invoice_data: list[tuple[InvoiceData, float, str | None]] = []

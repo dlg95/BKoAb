@@ -77,7 +77,7 @@ export function PersonPeriodsEditor({ lease, apartmentId, onClose }: PersonPerio
   return (
     <Card className="border-dashed">
       <CardHeader>
-        <CardTitle className="text-base">Kopfzahl-Zeiträume — {lease.tenant_name}</CardTitle>
+        <CardTitle className="text-base">Personenzahl-Zeiträume — {lease.tenant_name}</CardTitle>
         <CardDescription>
           Innerhalb eines Mietvertrags kann sich die Personenzahl ändern (z. B. Nachzug). Die Zeiträume müssen
           lückenlos von Einzug bis Auszug reichen.
@@ -112,7 +112,7 @@ export function PersonPeriodsEditor({ lease, apartmentId, onClose }: PersonPerio
               />
             </div>
             <div className="space-y-1">
-              <Label>Köpfe</Label>
+              <Label>Personen</Label>
               <Input
                 type="number"
                 min={1}
@@ -143,7 +143,7 @@ export function PersonPeriodsEditor({ lease, apartmentId, onClose }: PersonPerio
             Zeitraum hinzufügen
           </Button>
           <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-            Kopfzahl-Zeiträume speichern
+            Personenzahl-Zeiträume speichern
           </Button>
           {onClose && (
             <Button variant="ghost" size="sm" onClick={onClose}>

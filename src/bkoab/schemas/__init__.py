@@ -117,7 +117,7 @@ class PersonPeriodCreate(BaseModel):
     @classmethod
     def validate_persons(cls, v: int) -> int:
         if v < 1:
-            raise ValueError("Kopfzahl muss mindestens 1 sein")
+            raise ValueError("Personenzahl muss mindestens 1 sein")
         return v
 
 

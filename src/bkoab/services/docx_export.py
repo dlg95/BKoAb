@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from io import BytesIO
 
@@ -34,8 +35,32 @@ def _default_payment_text(apartment_iban: str, account_holder: str, reference: s
         )
 
 
-def _format_period_end(valid_to: str | None) -> str:
-    return valid_to or "laufend"
+def _year_bounds(year: int) -> tuple[date, date]:
+    return date(year, 1, 1), date(year, 12, 31)
+
+
+def person_period_lines_for_year(
+    person_period_lines: list[PersonPeriodLine],
+    year: int,
+) -> list[PersonPeriodLine]:
+    """Clip person periods to the overlap with the billing calendar year."""
+    year_start, year_end = _year_bounds(year)
+    clipped: list[PersonPeriodLine] = []
+    for period in person_period_lines:
+        period_start = date.fromisoformat(period.valid_from)
+        period_end = date.fromisoformat(period.valid_to) if period.valid_to else year_end
+        start = max(period_start, year_start)
+        end = min(period_end, year_end)
+        if start > end:
+            continue
+        clipped.append(
+            PersonPeriodLine(
+                valid_from=start.isoformat(),
+                valid_to=end.isoformat(),
+                persons=period.persons,
+            )
+        )
+    return clipped
 
 
 def _add_head_months_explanation(
@@ -45,7 +70,7 @@ def _add_head_months_explanation(
     party: PartySettlement,
     person_period_lines: list[PersonPeriodLine],
 ) -> None:
-    add_styled_paragraph(doc, "Kopfmonate", bold=True, size=10)
+    add_styled_paragraph(doc, "Personenmonate", bold=True, size=10)
     add_styled_paragraph(
         doc,
         "Verteilung nach bewohnten Personentagen. "
@@ -54,18 +79,24 @@ def _add_head_months_explanation(
     )
 
     summary = (
-        f"Ihre Kopfmonate: {party.head_months:.2f}, gesamt Objekt: {preview.total_head_months:.2f}"
+        f"Ihre Personenmonate: {party.head_months:.2f}, gesamt Objekt: {preview.total_head_months:.2f}"
     )
     if float(preview.landlord_vacancy_head_months) > 0:
         summary += f", Leerstand Vermieter: {preview.landlord_vacancy_head_months:.2f}"
     add_styled_paragraph(doc, summary + ".", size=9)
 
     if person_period_lines:
-        periods_text = ", ".join(
-            f"{period.persons} Pers. ({period.valid_from}–{_format_period_end(period.valid_to)})"
-            for period in person_period_lines
-        )
-        add_styled_paragraph(doc, f"Kopfzahl: {periods_text}.", size=9)
+        year_periods = person_period_lines_for_year(person_period_lines, preview.year)
+        if year_periods:
+            periods_text = ", ".join(
+                f"{period.persons} Pers. ({period.valid_from}–{period.valid_to})"
+                for period in year_periods
+            )
+            add_styled_paragraph(
+                doc,
+                f"Personenzahl im Abrechnungsjahr {preview.year}: {periods_text}.",
+                size=9,
+            )
 
     doc.add_paragraph()
 
@@ -144,7 +175,7 @@ def generate_settlement_docx(
     table = doc.add_table(rows=1, cols=4)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     set_table_borders(table)
-    headers = ["Kostenart", "Gesamtkosten (Objekt)", "Ihre Kopfmonate", "Ihr Anteil"]
+    headers = ["Kostenart", "Gesamtkosten (Objekt)", "Ihre Personenmonate", "Ihr Anteil"]
     for idx, title in enumerate(headers):
         set_cell_text(table.rows[0].cells[idx], title, bold=True, size=9, shade=True)
 

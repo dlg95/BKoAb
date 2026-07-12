@@ -114,8 +114,8 @@ export function ApartmentDetailPage() {
         <CardHeader>
           <CardTitle>Zimmer ({apartment.rooms.length})</CardTitle>
           <CardDescription>
-            Die Verteilerquote in der Abrechnung basiert auf Kopfmonaten je Zimmer: Personen × Bewohnungsmonate.
-            Leerstehende Zimmer werden dem Vermieter als fiktive Kopfmonate zugerechnet.
+            Die Verteilerquote in der Abrechnung basiert auf Personenmonaten je Zimmer: Personen × Bewohnungsmonate.
+            Leerstehende Zimmer werden dem Vermieter als fiktive Personenmonate zugerechnet.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

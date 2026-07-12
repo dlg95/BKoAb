@@ -481,7 +481,7 @@ export function BillingPage() {
                     </Badge>
                   </div>
                 </div>
-                <CardDescription>Kopfmonate: {parseFloat(party.head_months).toFixed(2)}</CardDescription>
+                <CardDescription>Personenmonate: {parseFloat(party.head_months).toFixed(2)}</CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -518,7 +518,7 @@ export function BillingPage() {
 
           {preview && (
             <p className="text-sm text-muted-foreground">
-              Gesamtkopfmonate: {parseFloat(preview.total_head_months).toFixed(2)} ·
+              Personenmonate gesamt: {parseFloat(preview.total_head_months).toFixed(2)} ·
               Leerstand Vermieter: {parseFloat(preview.landlord_vacancy_head_months).toFixed(2)}
             </p>
           )}
