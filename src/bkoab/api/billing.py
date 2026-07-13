@@ -29,11 +29,13 @@ from bkoab.schemas import (
     InvoiceRead,
     InvoiceUpdate,
     PropertyBillingYearRead,
+    PartySettlement,
     SettlementPreview,
     default_allocation_key,
 )
 from bkoab.services.allocation import occupied_months_in_year
 from bkoab.services.docx_export import PersonPeriodLine, generate_settlement_docx, settlement_docx_bytes
+from bkoab.services.pdf_export import build_settlement_pdf
 from bkoab.services.person_periods import ensure_default_person_periods
 from bkoab.services.proration import prorate_amount
 from bkoab.services.settlement import build_settlement_preview
@@ -150,6 +152,52 @@ def _build_party_settlement_docx(db: Session, apartment_id: int, year: int, leas
     )
     filename = _settlement_filename(year, party.tenant_name, party.room_name)
     return doc, filename
+
+
+def _settlement_pdf_filename(docx_filename: str) -> str:
+    if docx_filename.lower().endswith(".docx"):
+        return docx_filename[:-5] + ".pdf"
+    return f"{docx_filename}.pdf"
+
+
+def _party_invoice_pdf_attachments(db: Session, party: PartySettlement) -> list[bytes]:
+    invoice_ids: list[int] = []
+    seen: set[int] = set()
+    for line in party.cost_lines:
+        if line.invoice_id in seen:
+            continue
+        seen.add(line.invoice_id)
+        invoice_ids.append(line.invoice_id)
+    if not invoice_ids:
+        return []
+
+    invoices = db.query(Invoice).filter(Invoice.id.in_(invoice_ids)).all()
+    by_id = {invoice.id: invoice for invoice in invoices}
+    attachments: list[bytes] = []
+    for invoice_id in invoice_ids:
+        invoice = by_id.get(invoice_id)
+        if not invoice or not invoice.has_document:
+            continue
+        path = _invoice_pdf_path(invoice_id)
+        if path.exists():
+            attachments.append(path.read_bytes())
+    return attachments
+
+
+def _build_party_settlement_pdf(db: Session, apartment_id: int, year: int, lease_id: int) -> tuple[bytes, str]:
+    doc, docx_filename = _build_party_settlement_docx(db, apartment_id, year, lease_id)
+    preview = build_settlement_preview(db, apartment_id, year)
+    party = next((item for item in preview.parties if item.lease_id == lease_id), None)
+    if not party:
+        raise HTTPException(404, "Keine Abrechnung für diese Mietpartei im Abrechnungsjahr")
+    try:
+        pdf_bytes = build_settlement_pdf(
+            settlement_docx_bytes(doc),
+            _party_invoice_pdf_attachments(db, party),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    return pdf_bytes, _settlement_pdf_filename(docx_filename)
 
 
 def _get_or_create_billing_year(db: Session, apartment_id: int, year: int) -> BillingYear:
@@ -496,6 +544,21 @@ def export_settlement_for_party(apartment_id: int, year: int, lease_id: int, db:
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/apartments/{apartment_id}/billing-years/{year}/export/{lease_id}/pdf")
+def export_settlement_pdf_for_party(apartment_id: int, year: int, lease_id: int, db: Session = Depends(get_db)):
+    content, filename = _build_party_settlement_pdf(db, apartment_id, year, lease_id)
+
+    export_dir = EXPORTS_DIR / str(apartment_id) / str(year)
+    export_dir.mkdir(parents=True, exist_ok=True)
+    (export_dir / filename).write_bytes(content)
+
+    return Response(
+        content=content,
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

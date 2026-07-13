@@ -166,14 +166,14 @@ export function PropertyLeasesPage() {
                 <Input value={form.tenant_contact} onChange={(e) => setForm({ ...form, tenant_contact: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label>{BILLING_LABELS.wg.subUnit}</Label>
+                <Label>{BILLING_LABELS.mfh.subUnit}</Label>
                 <Select
                   value={form.room_id || null}
                   items={roomItems}
                   onValueChange={(v) => v && setForm({ ...form, room_id: v })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={`${BILLING_LABELS.wg.subUnit} wählen`} />
+                    <SelectValue placeholder={`${BILLING_LABELS.mfh.subUnit} wählen`} />
                   </SelectTrigger>
                   <SelectContent>
                     {apartment?.rooms.map((room) => (
@@ -221,7 +221,7 @@ export function PropertyLeasesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Mieter</TableHead>
-                    <TableHead>{BILLING_LABELS.wg.subUnit}</TableHead>
+                    <TableHead>{BILLING_LABELS.mfh.subUnit}</TableHead>
                     <TableHead>Personenzahl-Zeiträume</TableHead>
                     <TableHead>Einzug</TableHead>
                     <TableHead>Auszug</TableHead>

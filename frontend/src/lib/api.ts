@@ -1,4 +1,4 @@
-import { fetchDocxExport } from "@/lib/download"
+import { fetchExport } from "@/lib/download"
 
 const API_BASE = "/api"
 
@@ -18,6 +18,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export type Apartment = {
   id: number
   property_id: number | null
+  billing_kind: "wg" | "mfh"
   name: string
   street: string
   city: string
@@ -259,9 +260,20 @@ export const api = {
     tenantName: string,
     roomName: string,
   ) =>
-    fetchDocxExport(
+    fetchExport(
       `${API_BASE}/apartments/${apartmentId}/billing-years/${year}/export/${leaseId}`,
       `Abrechnung_${year}_${tenantName}_${roomName}.docx`,
+    ),
+  exportPartyPdf: (
+    apartmentId: number,
+    year: number,
+    leaseId: number,
+    tenantName: string,
+    roomName: string,
+  ) =>
+    fetchExport(
+      `${API_BASE}/apartments/${apartmentId}/billing-years/${year}/export/${leaseId}/pdf`,
+      `Abrechnung_${year}_${tenantName}_${roomName}.pdf`,
     ),
   landlord: () => request<LandlordProfile | null>("/landlord-profile"),
   updateLandlord: (data: object) => request<LandlordProfile>("/landlord-profile", { method: "PUT", body: JSON.stringify(data) }),

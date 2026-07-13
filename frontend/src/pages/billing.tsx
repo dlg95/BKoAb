@@ -16,8 +16,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { api, DEFAULT_ALLOCATION_BY_TYPE, formatEur, MONTHS } from "@/lib/api"
-import { ALLOCATION_ITEMS, ALLOCATION_KEYS } from "@/lib/billing-labels"
-import { pickExportDirectory, saveDocxBlob } from "@/lib/download"
+import { ALLOCATION_ITEMS, ALLOCATION_KEYS, BILLING_LABELS } from "@/lib/billing-labels"
+import { pickExportDirectory, saveDocxBlob, savePdfBlob } from "@/lib/download"
 import { abbreviateTenantName } from "@/lib/utils"
 
 const INVOICE_TYPES = [
@@ -98,6 +98,7 @@ export function BillingPage() {
   const [exportDirHandle, setExportDirHandle] = useState<FileSystemDirectoryHandle | null>(null)
   const [exportDirName, setExportDirName] = useState<string | null>(null)
   const [exportingLeaseId, setExportingLeaseId] = useState<number | null>(null)
+  const [exportingFormat, setExportingFormat] = useState<"docx" | "pdf" | null>(null)
   const [exportStatus, setExportStatus] = useState<string | null>(null)
 
   const createInvoice = useMutation({
@@ -192,18 +193,17 @@ export function BillingPage() {
     setExportStatus(`Zielordner: ${handle.name}`)
   }
 
-  async function exportPartyDocx(leaseId: number, tenantName: string, roomName: string) {
+  async function exportParty(leaseId: number, tenantName: string, roomName: string, format: "docx" | "pdf") {
     setExportingLeaseId(leaseId)
-    setExportStatus(`DOCX wird erstellt für ${tenantName} (${roomName})…`)
+    setExportingFormat(format)
+    setExportStatus(`${format.toUpperCase()} wird erstellt für ${tenantName} (${roomName})…`)
     try {
-      const { blob, filename } = await api.exportPartyDocx(
-        apartmentId,
-        billingYear,
-        leaseId,
-        tenantName,
-        roomName,
-      )
-      const result = await saveDocxBlob(blob, filename, exportDirHandle)
+      const { blob, filename } =
+        format === "pdf"
+          ? await api.exportPartyPdf(apartmentId, billingYear, leaseId, tenantName, roomName)
+          : await api.exportPartyDocx(apartmentId, billingYear, leaseId, tenantName, roomName)
+      const save = format === "pdf" ? savePdfBlob : saveDocxBlob
+      const result = await save(blob, filename, exportDirHandle)
       if (result === "cancelled") {
         setExportStatus("Speichern abgebrochen.")
         return
@@ -217,6 +217,7 @@ export function BillingPage() {
       setExportStatus(error instanceof Error ? error.message : "Export fehlgeschlagen.")
     } finally {
       setExportingLeaseId(null)
+      setExportingFormat(null)
     }
   }
 
@@ -242,15 +243,23 @@ export function BillingPage() {
     return row.occupied_months.includes(month)
   }
 
+  const isMfhUnit = apartment?.billing_kind === "mfh"
+  const parentPath = isMfhUnit && apartment?.property_id
+    ? `/gebaeude/${apartment.property_id}`
+    : `/wohnungen/${apartmentId}`
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Abrechnung {billingYear}</h1>
-          <p className="text-muted-foreground">{apartment?.name}</p>
+          <p className="text-muted-foreground">
+            {apartment?.name}
+            {isMfhUnit ? ` · ${BILLING_LABELS.mfh.subUnit} im Gebäude` : ""}
+          </p>
         </div>
-        <LinkButton variant="outline" to={`/wohnungen/${apartmentId}`}>
-          Zur WG-Wohnung
+        <LinkButton variant="outline" to={parentPath}>
+          {isMfhUnit ? "Zum Gebäude" : "Zur WG-Wohnung"}
         </LinkButton>
       </div>
 
@@ -270,7 +279,7 @@ export function BillingPage() {
       )}
 
       {billingYearMissing ? (
-        <BillingYearsCard apartmentId={apartmentId} unitName={apartment?.name} />
+        <BillingYearsCard apartmentId={apartmentId} unitName={apartment?.name} kind={isMfhUnit ? "mfh" : "wg"} />
       ) : (
       <Tabs defaultValue="rechnungen">
         <TabsList>
@@ -513,7 +522,7 @@ export function BillingPage() {
               <span className="text-sm text-muted-foreground">Speicherort: {exportDirName}</span>
             ) : (
               <span className="text-sm text-muted-foreground">
-                Ohne Zielordner öffnet sich beim Export der Speichern-Dialog.
+                Ohne Zielordner öffnet sich beim Export der Speichern-Dialog. PDF-Export hängt hochgeladene Rechnungs-PDFs an.
               </span>
             )}
           </div>
@@ -545,15 +554,30 @@ export function BillingPage() {
                       variant="outline"
                       size="sm"
                       disabled={exportingLeaseId !== null}
-                      onClick={() => exportPartyDocx(party.lease_id, party.tenant_name, party.room_name)}
+                      onClick={() => exportParty(party.lease_id, party.tenant_name, party.room_name, "docx")}
                     >
-                      {exportingLeaseId === party.lease_id ? (
+                      {exportingLeaseId === party.lease_id && exportingFormat === "docx" ? (
                         <>
                           <Loader2 className="mr-2 size-4 animate-spin" />
                           Erstellt DOCX…
                         </>
                       ) : (
                         "DOCX erstellen"
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={exportingLeaseId !== null}
+                      onClick={() => exportParty(party.lease_id, party.tenant_name, party.room_name, "pdf")}
+                    >
+                      {exportingLeaseId === party.lease_id && exportingFormat === "pdf" ? (
+                        <>
+                          <Loader2 className="mr-2 size-4 animate-spin" />
+                          Erstellt PDF…
+                        </>
+                      ) : (
+                        "PDF erstellen"
                       )}
                     </Button>
                     <Badge variant={party.balance_type === "nachzahlung" ? "destructive" : party.balance_type === "guthaben" ? "default" : "secondary"}>

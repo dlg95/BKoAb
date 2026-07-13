@@ -102,7 +102,25 @@ def client(tmp_path):
 
 
 def _minimal_pdf() -> bytes:
-    return b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n"
+    return b"""%PDF-1.4
+1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj
+2 0 obj<< /Type /Pages /Kids [3 0 R] /Count 1 >>endobj
+3 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents 4 0 R >>endobj
+4 0 obj<< /Length 44 >>stream
+BT /F1 12 Tf 20 100 Td (Test) Tj ET
+endstream endobj
+xref
+0 5
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000214 00000 n 
+trailer<< /Size 5 /Root 1 0 R >>
+startxref
+310
+%%EOF
+"""
 
 
 def test_settlement_preview_and_balance(client):
@@ -283,6 +301,35 @@ def test_export_single_party_docx(client):
     assert len(response.content) > 1000
 
 
+def test_export_single_party_pdf(client, monkeypatch):
+    invoice = client.post(
+        "/api/apartments/1/billing-years/2025/invoices",
+        json={
+            "invoice_type": "strom",
+            "label": "Strom Beleg",
+            "amount": "50",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+        },
+    ).json()
+    client.post(
+        f"/api/invoices/{invoice['id']}/document",
+        files={"file": ("beleg.pdf", BytesIO(_minimal_pdf()), "application/pdf")},
+    )
+
+    def fake_docx_to_pdf(docx_bytes: bytes) -> bytes:
+        assert docx_bytes
+        return _minimal_pdf()
+
+    monkeypatch.setattr("bkoab.services.pdf_export.docx_bytes_to_pdf", fake_docx_to_pdf)
+
+    response = client.post("/api/apartments/1/billing-years/2025/export/1/pdf")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+    assert len(response.content) > 100
+
+
 def test_create_property_defaults_property_type_to_mfh(client):
     response = client.post(
         "/api/properties",
@@ -354,6 +401,33 @@ def test_get_property_billing_year_get_or_create(client):
         },
     )
     assert invoice.status_code == 201
+
+
+def test_mfh_units_not_listed_as_wg_apartments(client):
+    prop = client.post(
+        "/api/properties",
+        json={
+            "name": "MFH Test",
+            "street": "MFH 1",
+            "city": "12345 Berlin",
+            "total_area_sqm": "300",
+            "property_type": "mfh",
+        },
+    )
+    property_id = prop.json()["id"]
+    unit = client.post(
+        f"/api/properties/{property_id}/units",
+        json={"name": "Whg EG", "living_area_sqm": "85"},
+    )
+    assert unit.status_code == 201
+    unit_id = unit.json()["id"]
+    assert unit.json()["billing_kind"] == "mfh"
+
+    wg_list = client.get("/api/apartments").json()
+    assert all(item["id"] != unit_id for item in wg_list)
+
+    detail = client.get(f"/api/apartments/{unit_id}").json()
+    assert detail["billing_kind"] == "mfh"
 
 
 def test_mfh_property_invoice_distribution(client):

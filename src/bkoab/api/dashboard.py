@@ -19,10 +19,14 @@ from bkoab.schemas import (
 )
 
 
+from bkoab.services.apartment_context import apartment_billing_kind, is_wg_apartment
+
+
 def _property_kind(prop: Property, unit_count: int) -> str:
     if prop.property_type in (PropertyType.MFH, PropertyType.WEG) or unit_count > 1:
         return "mfh"
     return "wg"
+
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
@@ -33,6 +37,7 @@ def _apartment_to_read(apartment: Apartment) -> ApartmentRead:
     return ApartmentRead(
         id=apartment.id,
         property_id=apartment.property_id,
+        billing_kind=apartment_billing_kind(apartment),
         name=apartment.name,
         street=apartment.street,
         city=apartment.city,
@@ -177,7 +182,7 @@ def list_apartments(db: Session = Depends(get_db)):
         .options(joinedload(Apartment.rooms), joinedload(Apartment.property))
         .all()
     )
-    return [_apartment_to_read(a) for a in apartments]
+    return [_apartment_to_read(a) for a in apartments if is_wg_apartment(a)]
 
 
 @router.post("/apartments", response_model=ApartmentRead, status_code=201)
@@ -187,6 +192,11 @@ def create_apartment(payload: ApartmentCreate, db: Session = Depends(get_db)):
         prop = db.get(Property, property_id)
         if not prop:
             raise HTTPException(404, "Gebäude nicht gefunden")
+        if prop.property_type != PropertyType.EINFAMILIEN:
+            raise HTTPException(
+                400,
+                "Wohnungen in Mehrfamilienhäusern legen Sie unter Gebäude an, nicht unter WG-Wohnungen.",
+            )
 
     apartment = Apartment(
         property_id=property_id,

@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { api } from "@/lib/api"
+import { BILLING_LABELS } from "@/lib/billing-labels"
 
 function formatPersonPeriods(lease: { person_periods: { valid_from: string; valid_to: string | null; persons: number }[]; persons: number }) {
   if (!lease.person_periods.length) return `${lease.persons} Personen`
@@ -50,7 +51,7 @@ export function LeasesPage() {
       api.createLease(apartmentId, {
         tenant_name: form.tenant_name,
         tenant_contact: form.tenant_contact,
-        room_id: Number(form.room_id),
+        room_id: Number(form.room_id || singleRoom?.id),
         persons: Number(form.persons),
         move_in: form.move_in,
         move_out: form.move_out || null,
@@ -67,6 +68,12 @@ export function LeasesPage() {
   })
 
   const editingLease = leases?.find((l) => l.id === editingLeaseId)
+  const isMfhUnit = apartment?.billing_kind === "mfh"
+  const subUnitLabel = isMfhUnit ? BILLING_LABELS.mfh.subUnit : BILLING_LABELS.wg.subUnit
+  const parentPath = isMfhUnit && apartment?.property_id
+    ? `/gebaeude/${apartment.property_id}`
+    : `/wohnungen/${apartmentId}`
+  const singleRoom = apartment?.rooms.length === 1 ? apartment.rooms[0] : null
   const roomItems = Object.fromEntries(
     (apartment?.rooms ?? []).map((room) => [String(room.id), room.name]),
   )
@@ -76,10 +83,13 @@ export function LeasesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Mietparteien</h1>
-          <p className="text-muted-foreground">{apartment?.name}</p>
+          <p className="text-muted-foreground">
+            {apartment?.name}
+            {isMfhUnit ? ` · ${BILLING_LABELS.mfh.subUnit}` : ""}
+          </p>
         </div>
-        <LinkButton variant="outline" to={`/wohnungen/${apartmentId}`}>
-          Zurück
+        <LinkButton variant="outline" to={parentPath}>
+          {isMfhUnit ? "Zum Gebäude" : "Zurück"}
         </LinkButton>
       </div>
 
@@ -100,14 +110,17 @@ export function LeasesPage() {
             <Input value={form.tenant_contact} onChange={(e) => setForm({ ...form, tenant_contact: e.target.value })} />
           </div>
           <div className="space-y-2">
-            <Label>Zimmer</Label>
+            <Label>{subUnitLabel}</Label>
+            {singleRoom ? (
+              <Input value={singleRoom.name} disabled />
+            ) : (
             <Select
-              value={form.room_id || null}
+              value={form.room_id || (singleRoom ? String(singleRoom.id) : null)}
               items={roomItems}
               onValueChange={(v) => v && setForm({ ...form, room_id: v })}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Zimmer wählen" />
+                <SelectValue placeholder={`${subUnitLabel} wählen`} />
               </SelectTrigger>
               <SelectContent>
                 {apartment?.rooms.map((room) => (
@@ -117,6 +130,7 @@ export function LeasesPage() {
                 ))}
               </SelectContent>
             </Select>
+            )}
           </div>
           <div className="space-y-2">
             <Label>Personen (initial)</Label>
@@ -133,7 +147,7 @@ export function LeasesPage() {
           <div className="md:col-span-3">
             <Button
               onClick={() => createMutation.mutate()}
-              disabled={!form.tenant_name || !form.room_id || !form.move_in || createMutation.isPending}
+              disabled={!form.tenant_name || (!form.room_id && !singleRoom) || !form.move_in || createMutation.isPending}
             >
               Anlegen
             </Button>

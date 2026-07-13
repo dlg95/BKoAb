@@ -19,6 +19,7 @@ export function PropertyDetailPage() {
   const { id } = useParams()
   const propertyId = Number(id)
   const queryClient = useQueryClient()
+  const defaultBillingYear = new Date().getFullYear() - 1
 
   const { data: property } = useQuery({
     queryKey: ["property", propertyId],
@@ -158,8 +159,10 @@ export function PropertyDetailPage() {
         <CardHeader>
           <CardTitle>{BILLING_LABELS.mfh.subUnitPlural} ({property.units.length})</CardTitle>
           <CardDescription>
-            Untereinheiten des Gebäudes — Nutzfläche je {BILLING_LABELS.mfh.subUnit} für Rechnungen
-            mit Verteilerquote Fläche (m²). {ALLOCATION_PER_INVOICE_HINT}
+            Untereinheiten des Gebäudes — je {BILLING_LABELS.mfh.subUnit} eigene Mietparteien-Abrechnung
+            (wie Zimmer in einer WG). Nutzfläche für m²-Verteilung am Gebäude.
+            {" "}
+            {ALLOCATION_PER_INVOICE_HINT}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -170,7 +173,7 @@ export function PropertyDetailPage() {
                 <TableHead>Fläche (m²)</TableHead>
                 <TableHead>MEA</TableHead>
                 <TableHead>Verbrauch</TableHead>
-                <TableHead className="w-32" />
+                <TableHead className="min-w-[14rem]">Aktionen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -237,14 +240,29 @@ export function PropertyDetailPage() {
                       />
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => saveUnitMutation.mutate(unit.id)}
-                        disabled={saveUnitMutation.isPending || !draft.name.trim()}
-                      >
-                        Speichern
-                      </Button>
+                      <div className="flex flex-wrap gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => saveUnitMutation.mutate(unit.id)}
+                          disabled={saveUnitMutation.isPending || !draft.name.trim()}
+                        >
+                          Speichern
+                        </Button>
+                        <LinkButton
+                          variant="outline"
+                          size="sm"
+                          to={`/wohnungen/${unit.id}/mietparteien`}
+                        >
+                          Mietparteien
+                        </LinkButton>
+                        <LinkButton
+                          size="sm"
+                          to={`/wohnungen/${unit.id}/abrechnung/${defaultBillingYear}`}
+                        >
+                          Abrechnung
+                        </LinkButton>
+                      </div>
                     </TableCell>
                   </TableRow>
                 )

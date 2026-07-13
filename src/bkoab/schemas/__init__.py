@@ -193,6 +193,7 @@ class ApartmentUpdate(BaseModel):
 class ApartmentRead(BaseModel):
     id: int
     property_id: int | None
+    billing_kind: str = "wg"
     name: str
     street: str
     city: str

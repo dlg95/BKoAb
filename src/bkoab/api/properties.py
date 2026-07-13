@@ -42,12 +42,16 @@ def _property_to_read(prop: Property, db: Session) -> PropertyRead:
     )
 
 
+from bkoab.services.apartment_context import apartment_billing_kind
+
+
 def _apartment_to_read(apartment: Apartment) -> ApartmentRead:
     prop = apartment.property if hasattr(apartment, "property") else None
     total_area = prop.total_area_sqm if prop and prop.total_area_sqm is not None else apartment.living_area_sqm
     return ApartmentRead(
         id=apartment.id,
         property_id=apartment.property_id,
+        billing_kind=apartment_billing_kind(apartment),
         name=apartment.name,
         street=apartment.street,
         city=apartment.city,
