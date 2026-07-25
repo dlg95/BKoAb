@@ -11,7 +11,29 @@ Das Tool eignet sich besonders für:
 
 Die Abrechnung erfolgt immer **pro Kalenderjahr** (1. Januar bis 31. Dezember). Rechnungen mit kürzerem Zeitraum werden anteilig auf das Jahr hochgerechnet.
 
-> **Hinweis:** BKoAb unterstützt bei der Erstellung von Abrechnungen, ersetzt aber keine Rechts- oder Steuerberatung. Prüfen Sie die Ergebnisse vor dem Versand an Ihre Mieter.
+> **Hinweis:** BKoAb ist eine **private Anwendung** von Daniel Glauert und wird nur geteilt — kein verifiziertes oder zertifiziertes Produkt. Sie ersetzt **keine** Rechts-, Steuer- oder Finanzberatung. Nutzung **auf eigene Gefahr**; es wird **keine Haftung** übernommen. Prüfen Sie Ergebnisse vor dem Versand an Mieter. Details: siehe Abschnitt [Rechtliches](#rechtliches) bzw. in der App unter `/rechtliches`.
+
+---
+
+## Rechtliches
+
+**© 2026 Daniel Glauert.** Alle Rechte vorbehalten, soweit nicht ausdrücklich anders angegeben.
+
+### Charakter der Anwendung
+
+BKoAb ist eine private Anwendung. Sie wird lediglich als persönliche Hilfestellung geteilt und ist **kein** öffentlich angebotenes, geprüftes oder zertifiziertes Produkt und **kein** verifiziertes Tool.
+
+### Keine Steuer-, Rechts- oder Finanzberatung
+
+Inhalte, Berechnungen und Exporte dienen nur der technischen Unterstützung und können fehlerhaft oder unvollständig sein. Steuerliche, rechtliche und finanzielle Entscheidungen treffen Sie eigenverantwortlich.
+
+### Haftungsausschluss
+
+Die Nutzung erfolgt vollständig **auf eigene Gefahr**. Soweit gesetzlich zulässig, wird **keinerlei Haftung** für Schäden, falsche Abrechnungsergebnisse, Datenverlust oder sonstige Nachteile übernommen. Es wird keine Gewähr für Richtigkeit, Vollständigkeit, Verfügbarkeit oder Eignung für einen bestimmten Zweck gegeben.
+
+### Nutzungsbedingungen
+
+Nutzung für eigene, nicht kommerzielle Zwecke ist gestattet, soweit freigegeben. Weiterlizenzierung, Weiterverkauf, kommerzielle Vermarktung oder Darstellung als offizielles/geprüftes Produkt sind nicht gestattet, sofern nicht ausdrücklich schriftlich etwas anderes vereinbart wurde. Beim Teilen oder Hosting dürfen diese Hinweise nicht entfernt oder verfälscht werden.
 
 ---
 
@@ -37,6 +59,48 @@ Danach im Browser öffnen:
 - **API (technisch):** http://127.0.0.1:8000
 
 Die Navigation oben führt Sie zu **Dashboard**, **Wohnungen**, **Gebäude** und **Briefkopf**.
+
+---
+
+## Deployment auf Cloudflare
+
+BKoAb läuft auf Cloudflare als **Container** hinter einem Worker (FastAPI + gebautes Frontend in einem Image).
+
+### Voraussetzungen
+
+1. [Docker Desktop](https://www.docker.com/products/docker-desktop/) installiert und gestartet (`docker info` muss funktionieren)
+2. Cloudflare-Account mit **Workers Paid** (Containers sind Paid-only)
+3. Eingeloggt: `npx wrangler login`
+
+### Deploy
+
+Lokal (Docker Desktop muss laufen):
+
+```bash
+npm install
+npx wrangler deploy
+```
+
+Oder per GitHub Actions: Repository-Secrets setzen
+
+- `CLOUDFLARE_API_TOKEN` — Token mit Workers/Containers-Rechten ([API Tokens](https://dash.cloudflare.com/profile/api-tokens), Vorlage „Edit Cloudflare Workers“)
+- `CLOUDFLARE_ACCOUNT_ID` — `a017360ea169384c3e8bec55659d5a23`
+
+Dann Workflow **Deploy to Cloudflare** manuell starten oder nach Push auf `main`.
+
+Nach dem ersten Deploy kann die Bereitstellung des Containers einige Minuten dauern. Status prüfen:
+
+```bash
+npx wrangler containers list
+```
+
+Die App ist dann unter `https://bkoab.<dein-subdomain>.workers.dev` erreichbar.
+
+### Hinweise
+
+- **Persistenz:** Der Container-Disk ist derzeit ephemer — bei längerem Idle (`sleepAfter`) können SQLite-Daten und Belege zurückgesetzt werden. Für produktiven Dauerbetrieb folgt später R2/D1.
+- **PDF-Export:** LibreOffice ist im Image bewusst nicht enthalten (Image-Größe). DOCX-Export funktioniert; PDF-Export mit angehängten Belegen braucht LibreOffice im Image (optional nachrüstbar).
+- Lokal weiter mit `./run.sh` entwickeln.
 
 ---
 

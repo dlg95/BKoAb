@@ -39,7 +39,13 @@ app = FastAPI(title="BKoAb", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_origins=[
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+    ],
+    allow_origin_regex=r"https://.*\.workers\.dev",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -49,6 +55,12 @@ app.include_router(dashboard_router)
 app.include_router(leases_router)
 app.include_router(billing_router)
 app.include_router(properties_router)
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 
 frontend_dist = BASE_DIR / "frontend" / "dist"
 if frontend_dist.exists():

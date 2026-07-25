@@ -7,6 +7,7 @@ import { ApartmentsPage } from "@/pages/apartments"
 import { BillingPage } from "@/pages/billing"
 import { DashboardPage } from "@/pages/dashboard"
 import { LeasesPage } from "@/pages/leases"
+import { LegalPage } from "@/pages/legal"
 import { PropertiesPage } from "@/pages/properties"
 import { PropertyBillingPage } from "@/pages/property-billing"
 import { PropertyDetailPage } from "@/pages/property-detail"
@@ -31,6 +32,7 @@ export function App() {
             <Route path="gebaeude/:id/mietparteien" element={<PropertyLeasesPage />} />
             <Route path="gebaeude/:id/abrechnung/:year" element={<PropertyBillingPage />} />
             <Route path="einstellungen" element={<SettingsPage />} />
+            <Route path="rechtliches" element={<LegalPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

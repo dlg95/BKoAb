@@ -275,6 +275,15 @@ def generate_settlement_docx(
     )
     add_styled_paragraph(doc, payment_text, size=10)
 
+    doc.add_paragraph()
+    add_styled_paragraph(
+        doc,
+        "Hinweis: Dieses Dokument wurde mit der privaten Anwendung BKoAb (© Daniel Glauert) "
+        "erstellt. Es ersetzt keine Steuer-, Rechts- oder Finanzberatung und ist kein "
+        "verifiziertes Produkt. Prüfung und Verwendung erfolgen auf eigene Verantwortung.",
+        size=8,
+    )
+
     return doc
 
 

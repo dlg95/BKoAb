@@ -1,0 +1,16 @@
+{
+  "name": "bkoab",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev:worker": "wrangler dev",
+    "containers:list": "wrangler containers list",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/containers": "^0.0.30",
+    "@cloudflare/workers-types": "^5.20260722.1",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.114.0"
+  }
+}
