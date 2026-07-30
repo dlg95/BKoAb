@@ -87,6 +87,14 @@ APP="dist/BKoAb.app"
 /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName BKoAb" "$APP/Contents/Info.plist" 2>/dev/null \
   || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string BKoAb" "$APP/Contents/Info.plist"
 
+# Bundle LibreOffice (MPL-2.0) for PDF export — skip with BKOAB_SKIP_LIBREOFFICE_BUNDLE=1
+echo "Bündele LibreOffice für PDF-Export …"
+chmod +x scripts/bundle_libreoffice_macos.sh
+mkdir -p "$APP/Contents/Resources"
+./scripts/bundle_libreoffice_macos.sh "$APP/Contents/Resources"
+# Ship third-party notice next to the nested LibreOffice.app
+cp THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
+
 # ── Sign + notarize the app ─────────────────────────────────────────────────
 if [ -n "${BKOAB_SIGN_ID}" ]; then
   echo "Signiere App: $BKOAB_SIGN_ID"

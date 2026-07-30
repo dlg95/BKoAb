@@ -9,9 +9,11 @@ Daten
 Die Datenbank und Exporte liegen unter:
   ~/Library/Application Support/BKoAb/
 
-PDF-Export
-Für „PDF erstellen“ wird LibreOffice benötigt (optional):
-  brew install --cask libreoffice
+DOCX- und PDF-Export
+DOCX wird direkt von der App erzeugt (python-docx).
+PDF (Abrechnung + Belege) nutzt LibreOffice, das in dieser App
+mitgeliefert wird (MPL-2.0, siehe THIRD_PARTY_NOTICES.md im Bundle).
+Keine separate Installation nötig.
 
 Beenden
 App im Dock beenden (Rechtsklick → Beenden) oder das Terminal-/App-Fenster schließen.

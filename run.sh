@@ -8,6 +8,12 @@ fi
 source .venv/bin/activate
 pip install -q -e ".[dev]"
 
+# DOCX (python-docx) kommt aus dem Python-Paket; PDF braucht LibreOffice (MPL-2.0).
+./scripts/ensure_export_deps.sh || {
+  echo "Warnung: LibreOffice nicht installiert — DOCX-Export funktioniert, PDF-Export nicht."
+  echo "Später nachholen mit: ./scripts/ensure_export_deps.sh"
+}
+
 cleanup() {
   trap - EXIT INT TERM
   [[ -n "${API_PID:-}" ]] && kill "$API_PID" 2>/dev/null || true

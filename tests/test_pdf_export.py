@@ -1,8 +1,8 @@
 from io import BytesIO
 
-from pypdf import PdfReader, PdfWriter
+from pypdf import PdfReader
 
-from bkoab.services.pdf_export import merge_pdf_documents
+from bkoab.services.pdf_export import find_soffice, merge_pdf_documents
 
 
 def _minimal_pdf(page_label: str = "1") -> bytes:
@@ -25,6 +25,14 @@ startxref
 310
 %%EOF
 """.encode()
+
+
+def test_find_soffice_respects_env(tmp_path, monkeypatch):
+    fake = tmp_path / "soffice"
+    fake.write_text("#!/bin/sh\nexit 0\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv("BKOAB_SOFFICE", str(fake))
+    assert find_soffice() == str(fake)
 
 
 def test_merge_pdf_documents_preserves_page_count():

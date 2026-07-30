@@ -39,12 +39,37 @@ Nutzung für eigene, nicht kommerzielle Zwecke ist gestattet, soweit freigegeben
 
 ## Voraussetzungen und Start
 
+### Export-Abhängigkeiten (DOCX & PDF)
+
+| Format | Abhängigkeit | Wird mitgeliefert / installiert |
+|--------|--------------|----------------------------------|
+| **DOCX** | `python-docx` (+ `lxml`) | Ja — Python-Paket in `pyproject.toml`, bei `./run.sh` und im App-Bundle |
+| **PDF** (Abrechnung + Belege) | LibreOffice `soffice` + `pypdf` | `pypdf` im Python-Paket; LibreOffice (**MPL-2.0**) wird automatisch mitinstalliert bzw. in die macOS-App gebündelt |
+
+LibreOffice darf unter der MPL-2.0 weitergegeben werden. Hinweise: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+- **Lokal (`./run.sh`):** ruft `scripts/ensure_export_deps.sh` auf (macOS: Homebrew-Cask, Linux: apt `libreoffice-writer-nogui`).
+- **macOS-App (`./build_app.sh`):** lädt die offizielle LibreOffice-DMG und legt `LibreOffice.app` unter `BKoAb.app/Contents/Resources/` ab (Überspringen: `BKOAB_SKIP_LIBREOFFICE_BUNDLE=1`).
+- **Docker / Cloudflare-Image:** installiert `libreoffice-writer-nogui` im Dockerfile.
+
+Manuell nachholen:
+
+```bash
+./scripts/ensure_export_deps.sh
+# oder:
+#   brew install --cask libreoffice
+#   sudo apt install libreoffice-writer-nogui
+```
+
+Optional: Pfad überschreiben mit `BKOAB_SOFFICE=/pfad/zu/soffice`.
+
 ### Erstmalige Installation (einmalig)
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cd frontend && pnpm install && cd ..
+./scripts/ensure_export_deps.sh   # LibreOffice für PDF-Export
 ```
 
 ### Anwendung starten
@@ -58,7 +83,7 @@ Danach im Browser öffnen:
 - **Oberfläche:** http://127.0.0.1:5173
 - **API (technisch):** http://127.0.0.1:8000
 
-Die Navigation oben führt Sie zu **Dashboard**, **Wohnungen**, **Gebäude** und **Briefkopf**.
+Die Navigation oben führt Sie zu **Dashboard**, **Wohnungen** und **Briefkopf**.
 
 ---
 
@@ -99,7 +124,7 @@ Die App ist dann unter `https://bkoab.<dein-subdomain>.workers.dev` erreichbar.
 ### Hinweise
 
 - **Persistenz:** Der Container-Disk ist derzeit ephemer — bei längerem Idle (`sleepAfter`) können SQLite-Daten und Belege zurückgesetzt werden. Für produktiven Dauerbetrieb folgt später R2/D1.
-- **PDF-Export:** LibreOffice ist im Image bewusst nicht enthalten (Image-Größe). DOCX-Export funktioniert; PDF-Export mit angehängten Belegen braucht LibreOffice im Image (optional nachrüstbar).
+- **PDF-Export:** Das Image enthält LibreOffice Writer (nogui) für DOCX→PDF; das Image wird dadurch größer.
 - Lokal weiter mit `./run.sh` entwickeln.
 
 ---
@@ -298,3 +323,13 @@ pytest
 ### Geplante Erweiterungen
 
 Siehe [ROADMAP.md](ROADMAP.md) — u. a. erweiterte Kostenarten, WEG-Logik, Belegimport per Foto/KI.
+
+### macOS-App bauen
+
+```bash
+./build_app.sh
+# Schneller Test ohne LibreOffice-Download (~300 MB):
+#   BKOAB_SKIP_LIBREOFFICE_BUNDLE=1 ./build_app.sh
+```
+
+Ergebnis: `dist/BKoAb.dmg` mit gebündeltem LibreOffice für den PDF-Export.
