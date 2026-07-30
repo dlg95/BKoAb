@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Download } from "lucide-react"
-import { useEffect, useState } from "react"
+import { Download, Upload } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,6 +12,7 @@ import { saveExportBlob } from "@/lib/download"
 
 export function SettingsPage() {
   const queryClient = useQueryClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const { data: landlord } = useQuery({ queryKey: ["landlord"], queryFn: api.landlord })
   const [form, setForm] = useState({
     name: "",
@@ -22,6 +23,8 @@ export function SettingsPage() {
     payment_text_template: "",
   })
   const [exportMessage, setExportMessage] = useState<string | null>(null)
+  const [importMessage, setImportMessage] = useState<string | null>(null)
+  const [importError, setImportError] = useState(false)
 
   useEffect(() => {
     if (landlord)
@@ -51,6 +54,33 @@ export function SettingsPage() {
     },
     onError: (error) => {
       setExportMessage((error as Error).message || "Export fehlgeschlagen.")
+    },
+  })
+
+  const importMutation = useMutation({
+    mutationFn: (file: File) => api.importAllUserData(file),
+    onSuccess: (result) => {
+      setImportError(false)
+      const backup = result.backup_path
+        ? ` Vorherige Daten gesichert unter: ${result.backup_path}.`
+        : ""
+      setImportMessage(
+        `Import erfolgreich (${result.imported_files} Dateien).${backup} Seite wird aktualisiert…`,
+      )
+      void queryClient.invalidateQueries().then(() => {
+        window.location.reload()
+      })
+    },
+    onError: (error) => {
+      setImportError(true)
+      let message = (error as Error).message || "Import fehlgeschlagen."
+      try {
+        const parsed = JSON.parse(message) as { detail?: string }
+        if (parsed.detail) message = parsed.detail
+      } catch {
+        /* plain text */
+      }
+      setImportMessage(message)
     },
   })
 
@@ -95,43 +125,79 @@ export function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Daten exportieren</CardTitle>
+          <CardTitle>Daten exportieren & importieren</CardTitle>
           <CardDescription>
-            Alle Nutzerdaten als ZIP — für Sicherung oder Verwendung auf einem anderen Gerät.
-            Enthalten: Datenbank (Wohnungen, ggf. Gebäude, Mietparteien, Abrechnungen),
-            Rechnungs-PDFs, Briefkopf-Dateien und erzeugte Exporte. Kein Programmcode.
+            Sicherung oder Übertragung auf ein anderes Gerät. Enthalten: Datenbank (Wohnungen,
+            Mietparteien, Abrechnungen), Rechnungs-PDFs, Briefköpfe und Exporte — kein Programmcode.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <Button
-            onClick={() => {
-              setExportMessage(null)
-              exportMutation.mutate()
-            }}
-            disabled={exportMutation.isPending}
-          >
-            <Download className="mr-1 size-4" />
-            {exportMutation.isPending
-              ? "Export wird erstellt…"
-              : "Daten exportieren (u. a. für anderes Gerät)"}
-          </Button>
-          {exportMessage && (
-            <p
-              className={
-                exportMutation.isError
-                  ? "text-sm text-destructive"
-                  : "text-sm text-muted-foreground"
-              }
+        <CardContent className="space-y-6">
+          <div className="space-y-3">
+            <h3 className="text-sm font-medium">Exportieren</h3>
+            <Button
+              onClick={() => {
+                setExportMessage(null)
+                exportMutation.mutate()
+              }}
+              disabled={exportMutation.isPending || importMutation.isPending}
             >
-              {exportMessage}
+              <Download className="mr-1 size-4" />
+              {exportMutation.isPending
+                ? "Export wird erstellt…"
+                : "Daten exportieren (u. a. für anderes Gerät)"}
+            </Button>
+            {exportMessage && (
+              <p
+                className={
+                  exportMutation.isError
+                    ? "text-sm text-destructive"
+                    : "text-sm text-muted-foreground"
+                }
+              >
+                {exportMessage}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-3 border-t pt-4">
+            <h3 className="text-sm font-medium">Importieren</h3>
+            <p className="text-sm text-muted-foreground">
+              Ersetzt die aktuellen Nutzerdaten durch einen zuvor erstellten BKoAb-Datenexport.
+              Vor dem Überschreiben wird automatisch eine Sicherung angelegt.
             </p>
-          )}
-          <p className="text-xs text-muted-foreground">
-            Wiederherstellung: App beenden, Inhalt von <code>data/</code> aus dem ZIP in das
-            BKoAb-Datenverzeichnis kopieren (macOS-App:{" "}
-            <code>~/Library/Application Support/BKoAb</code>), danach App starten. Details stehen in{" "}
-            <code>LIESMICH.txt</code> im ZIP.
-          </p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".zip,application/zip"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                e.target.value = ""
+                if (!file) return
+                const ok = window.confirm(
+                  "Aktuelle Daten werden durch den Import ersetzt. Fortfahren?\n\n" +
+                    "Es wird vorher automatisch eine Sicherung angelegt.",
+                )
+                if (!ok) return
+                setImportMessage(null)
+                setImportError(false)
+                importMutation.mutate(file)
+              }}
+            />
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importMutation.isPending || exportMutation.isPending}
+            >
+              <Upload className="mr-1 size-4" />
+              {importMutation.isPending ? "Import läuft…" : "Daten importieren…"}
+            </Button>
+            {importMessage && (
+              <p className={importError ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
+                {importMessage}
+              </p>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

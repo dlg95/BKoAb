@@ -6,9 +6,13 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from bkoab.main import app
 from bkoab.services import data_export as data_export_module
+import bkoab.config as config_module
+import bkoab.database as database_module
 
 
 @pytest.fixture()
@@ -33,14 +37,30 @@ def export_client(tmp_path, monkeypatch):
     (letterheads / "logo.png").write_bytes(b"\x89PNG\r\n")
     (exports / "demo.docx").write_bytes(b"PK\x03\x04")
 
-    monkeypatch.setattr(data_export_module, "DATA_DIR", data_dir)
-    monkeypatch.setattr(data_export_module, "DB_PATH", db_path)
-    monkeypatch.setattr(data_export_module, "INVOICES_DIR", invoices)
-    monkeypatch.setattr(data_export_module, "LETTERHEADS_DIR", letterheads)
-    monkeypatch.setattr(data_export_module, "EXPORTS_DIR", exports)
+    for mod in (data_export_module, config_module):
+        monkeypatch.setattr(mod, "DATA_DIR", data_dir)
+        monkeypatch.setattr(mod, "DB_PATH", db_path)
+        monkeypatch.setattr(mod, "INVOICES_DIR", invoices)
+        monkeypatch.setattr(mod, "LETTERHEADS_DIR", letterheads)
+        monkeypatch.setattr(mod, "EXPORTS_DIR", exports)
+    monkeypatch.setattr(config_module, "DATABASE_URL", f"sqlite:///{db_path}")
+
+    original_engine = database_module.engine
+    original_session = database_module.SessionLocal
+    database_module.engine.dispose()
+    test_engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    database_module.engine = test_engine
+    database_module.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
     with TestClient(app) as client:
         yield client
+
+    database_module.engine.dispose()
+    database_module.engine = original_engine
+    database_module.SessionLocal = original_session
 
 
 def test_data_export_zip_contains_user_files(export_client):
@@ -62,7 +82,6 @@ def test_data_export_zip_contains_user_files(export_client):
         assert manifest["format"] == "bkoab-data-export"
         assert "data/bkoab.db" in manifest["contents"]
 
-        # Restored DB must be readable SQLite
         db_bytes = zf.read("data/bkoab.db")
         from tempfile import NamedTemporaryFile
 
@@ -76,3 +95,41 @@ def test_data_export_zip_contains_user_files(export_client):
             assert row == ("world",)
         finally:
             tmp_path.unlink(missing_ok=True)
+
+
+def test_data_import_replaces_user_files(export_client):
+    export_response = export_client.get("/api/data-export")
+    assert export_response.status_code == 200
+    zip_bytes = export_response.content
+
+    data_dir = data_export_module.DATA_DIR
+    (data_dir / "invoices" / "999.pdf").write_bytes(b"stale")
+    # Keep a valid sqlite file for init_db after import; overwrite with garbage then restore via import
+    (data_dir / "marker.txt").write_text("before-import")
+
+    files = {"file": ("backup.zip", zip_bytes, "application/zip")}
+    import_response = export_client.post("/api/data-import", files=files)
+    assert import_response.status_code == 200, import_response.text
+    body = import_response.json()
+    assert body["ok"] is True
+    assert body["imported_files"] >= 4
+    assert body["backup_path"]
+
+    assert (data_dir / "invoices" / "42.pdf").read_bytes().startswith(b"%PDF")
+    assert not (data_dir / "invoices" / "999.pdf").exists()
+    assert not (data_dir / "marker.txt").exists()
+    conn = sqlite3.connect(data_dir / "bkoab.db")
+    row = conn.execute("SELECT v FROM meta WHERE k='hello'").fetchone()
+    conn.close()
+    assert row == ("world",)
+
+    backup = Path(body["backup_path"])
+    assert backup.exists()
+    assert (backup / "invoices" / "999.pdf").exists()
+    assert (backup / "marker.txt").read_text() == "before-import"
+
+
+def test_data_import_rejects_non_zip(export_client):
+    files = {"file": ("nope.txt", b"hello", "text/plain")}
+    response = export_client.post("/api/data-import", files=files)
+    assert response.status_code == 400

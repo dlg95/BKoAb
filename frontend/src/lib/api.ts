@@ -268,9 +268,26 @@ export const api = {
       `Abrechnung_${year}_${tenantName}_${roomName}.pdf`,
     ),
   landlord: () => request<LandlordProfile | null>("/landlord-profile"),
-  updateLandlord: (data: object) => request<LandlordProfile>("/landlord-profile", { method: "PUT", body: JSON.stringify(data) }),
+  updateLandlord: (data: object) =>
+    request<LandlordProfile>("/landlord-profile", { method: "PUT", body: JSON.stringify(data) }),
   exportAllUserData: () =>
     fetchExportGet(`${API_BASE}/data-export`, "BKoAb_Datenexport.zip"),
+  importAllUserData: async (file: File) => {
+    const form = new FormData()
+    form.append("file", file)
+    const res = await fetch(`${API_BASE}/data-import`, { method: "POST", body: form })
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(text || res.statusText)
+    }
+    return res.json() as Promise<{
+      ok: boolean
+      imported_files: number
+      imported: string[]
+      backup_path: string | null
+      exported_at?: string
+    }>
+  },
 }
 
 export function formatEur(value: string | number) {
