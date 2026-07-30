@@ -135,22 +135,14 @@ export type LandlordProfile = {
   payment_text_template: string
 }
 
-export const DEFAULT_ALLOCATION_BY_TYPE: Record<string, string> = {
-  weg: "flaeche_qm",
-  gas: "personenmonate",
-  strom: "personenmonate",
-  handwerker: "personenmonate",
-  grundsteuer: "flaeche_qm",
-  sonstiges: "personenmonate",
-  hausmeister: "flaeche_qm",
-  aufzug: "flaeche_qm",
-  versicherung: "flaeche_qm",
-  schornsteinfeger: "wohneinheiten",
-  wasser_abwasser: "direktzuordnung",
-  muell: "flaeche_qm",
-  kabel: "wohneinheiten",
-  heizung_gebaeude: "flaeche_qm",
-}
+/** Default Verteilerquote for new invoices: always head-months (pro Kopf). */
+export const DEFAULT_ALLOCATION_KEY = "personenmonate"
+
+/** @deprecated Prefer DEFAULT_ALLOCATION_KEY; kept for callers that keyed by type. */
+export const DEFAULT_ALLOCATION_BY_TYPE: Record<string, string> = new Proxy(
+  {},
+  { get: () => DEFAULT_ALLOCATION_KEY },
+)
 
 export const api = {
   dashboard: () =>

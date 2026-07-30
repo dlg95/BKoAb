@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Navigate, useParams } from "react-router-dom"
+import { useParams } from "react-router-dom"
 import { useEffect, useMemo, useState } from "react"
 import { Plus } from "lucide-react"
 
@@ -120,10 +120,6 @@ export function ApartmentDetailPage() {
   }, [leases])
 
   if (!apartment) return <p>Laden…</p>
-
-  if (apartment.billing_kind === "mfh" && apartment.property_id) {
-    return <Navigate to={`/gebaeude/${apartment.property_id}`} replace />
-  }
 
   const nextRoomLabel = `Zimmer ${apartment.rooms.length + 1}`
   const roomsWithoutLease = apartment.rooms.filter((r) => (leaseCountByRoom.get(r.id) ?? 0) === 0)

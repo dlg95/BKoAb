@@ -15,8 +15,8 @@ import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { api, DEFAULT_ALLOCATION_BY_TYPE, formatEur, MONTHS } from "@/lib/api"
-import { ALLOCATION_ITEMS, ALLOCATION_KEYS, BILLING_LABELS } from "@/lib/billing-labels"
+import { api, DEFAULT_ALLOCATION_KEY, formatEur, MONTHS } from "@/lib/api"
+import { ALLOCATION_ITEMS, ALLOCATION_KEYS } from "@/lib/billing-labels"
 import { pickExportDirectory, saveDocxBlob, savePdfBlob } from "@/lib/download"
 import { abbreviateTenantName } from "@/lib/utils"
 
@@ -44,7 +44,7 @@ const INVOICE_TYPE_ITEMS = Object.fromEntries(
 function defaultInvoiceForm(year: number) {
   return {
     invoice_type: "gas",
-    allocation_key: "personenmonate",
+    allocation_key: DEFAULT_ALLOCATION_KEY,
     label: "",
     amount: "",
     period_start: `${year}-01-01`,
@@ -243,23 +243,15 @@ export function BillingPage() {
     return row.occupied_months.includes(month)
   }
 
-  const isMfhUnit = apartment?.billing_kind === "mfh"
-  const parentPath = isMfhUnit && apartment?.property_id
-    ? `/gebaeude/${apartment.property_id}`
-    : `/wohnungen/${apartmentId}`
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Abrechnung {billingYear}</h1>
-          <p className="text-muted-foreground">
-            {apartment?.name}
-            {isMfhUnit ? ` · ${BILLING_LABELS.mfh.subUnit} im Gebäude` : ""}
-          </p>
+          <p className="text-muted-foreground">{apartment?.name}</p>
         </div>
-        <LinkButton variant="outline" to={parentPath}>
-          {isMfhUnit ? "Zum Gebäude" : "Zur WG-Wohnung"}
+        <LinkButton variant="outline" to={`/wohnungen/${apartmentId}`}>
+          Zur WG-Wohnung
         </LinkButton>
       </div>
 
@@ -279,7 +271,7 @@ export function BillingPage() {
       )}
 
       {billingYearMissing ? (
-        <BillingYearsCard apartmentId={apartmentId} unitName={apartment?.name} kind={isMfhUnit ? "mfh" : "wg"} />
+        <BillingYearsCard apartmentId={apartmentId} unitName={apartment?.name} />
       ) : (
       <Tabs defaultValue="rechnungen">
         <TabsList>
@@ -309,7 +301,7 @@ export function BillingPage() {
                     setInvoiceForm({
                       ...invoiceForm,
                       invoice_type: v,
-                      allocation_key: DEFAULT_ALLOCATION_BY_TYPE[v] || "personenmonate",
+                      allocation_key: DEFAULT_ALLOCATION_KEY,
                     })
                   }
                 >

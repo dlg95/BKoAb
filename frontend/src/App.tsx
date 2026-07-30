@@ -8,10 +8,6 @@ import { BillingPage } from "@/pages/billing"
 import { DashboardPage } from "@/pages/dashboard"
 import { LeasesPage } from "@/pages/leases"
 import { LegalPage } from "@/pages/legal"
-import { PropertiesPage } from "@/pages/properties"
-import { PropertyBillingPage } from "@/pages/property-billing"
-import { PropertyDetailPage } from "@/pages/property-detail"
-import { PropertyLeasesPage } from "@/pages/property-leases"
 import { SettingsPage } from "@/pages/settings"
 
 const queryClient = new QueryClient()
@@ -27,10 +23,6 @@ export function App() {
             <Route path="wohnungen/:id" element={<ApartmentDetailPage />} />
             <Route path="wohnungen/:id/mietparteien" element={<LeasesPage />} />
             <Route path="wohnungen/:id/abrechnung/:year" element={<BillingPage />} />
-            <Route path="gebaeude" element={<PropertiesPage />} />
-            <Route path="gebaeude/:id" element={<PropertyDetailPage />} />
-            <Route path="gebaeude/:id/mietparteien" element={<PropertyLeasesPage />} />
-            <Route path="gebaeude/:id/abrechnung/:year" element={<PropertyBillingPage />} />
             <Route path="einstellungen" element={<SettingsPage />} />
             <Route path="rechtliches" element={<LegalPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

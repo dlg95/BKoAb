@@ -76,11 +76,7 @@ export function LeasesPage() {
   })
 
   const editingLease = leases?.find((l) => l.id === editingLeaseId)
-  const isMfhUnit = apartment?.billing_kind === "mfh"
-  const subUnitLabel = isMfhUnit ? BILLING_LABELS.mfh.subUnit : BILLING_LABELS.wg.subUnit
-  const parentPath = isMfhUnit && apartment?.property_id
-    ? `/gebaeude/${apartment.property_id}`
-    : `/wohnungen/${apartmentId}`
+  const subUnitLabel = BILLING_LABELS.wg.subUnit
   const singleRoom = apartment?.rooms.length === 1 ? apartment.rooms[0] : null
   const roomItems = Object.fromEntries(
     (apartment?.rooms ?? []).map((room) => [String(room.id), room.name]),
@@ -91,13 +87,10 @@ export function LeasesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Mietparteien</h1>
-          <p className="text-muted-foreground">
-            {apartment?.name}
-            {isMfhUnit ? ` · ${BILLING_LABELS.mfh.subUnit}` : ""}
-          </p>
+          <p className="text-muted-foreground">{apartment?.name}</p>
         </div>
-        <LinkButton variant="outline" to={parentPath}>
-          {isMfhUnit ? "Zum Gebäude" : "Zurück"}
+        <LinkButton variant="outline" to={`/wohnungen/${apartmentId}`}>
+          Zur WG-Wohnung
         </LinkButton>
       </div>
 

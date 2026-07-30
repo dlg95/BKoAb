@@ -78,20 +78,21 @@ PROPERTY_TYPE_LABELS = {
 }
 
 DEFAULT_ALLOCATION_BY_INVOICE_TYPE: dict[InvoiceType, AllocationKey] = {
-    InvoiceType.WEG: AllocationKey.FLAECHE_QM,
+    # WG focus: default is always head-months; other keys remain selectable in the UI.
+    InvoiceType.WEG: AllocationKey.PERSONENMONATE,
     InvoiceType.GAS: AllocationKey.PERSONENMONATE,
     InvoiceType.STROM: AllocationKey.PERSONENMONATE,
     InvoiceType.HANDWERKER: AllocationKey.PERSONENMONATE,
-    InvoiceType.GRUNDSTEUER: AllocationKey.FLAECHE_QM,
+    InvoiceType.GRUNDSTEUER: AllocationKey.PERSONENMONATE,
     InvoiceType.SONSTIGES: AllocationKey.PERSONENMONATE,
-    InvoiceType.HAUSMEISTER: AllocationKey.FLAECHE_QM,
-    InvoiceType.AUFZUG: AllocationKey.FLAECHE_QM,
-    InvoiceType.VERSICHERUNG: AllocationKey.FLAECHE_QM,
-    InvoiceType.SCHORNSTEINFEGER: AllocationKey.WOHNEINHEITEN,
-    InvoiceType.WASSER_ABWASSER: AllocationKey.DIREKTZUORDNUNG,
-    InvoiceType.MUELL: AllocationKey.FLAECHE_QM,
-    InvoiceType.KABEL: AllocationKey.WOHNEINHEITEN,
-    InvoiceType.HEIZUNG_GEBAEUDE: AllocationKey.FLAECHE_QM,
+    InvoiceType.HAUSMEISTER: AllocationKey.PERSONENMONATE,
+    InvoiceType.AUFZUG: AllocationKey.PERSONENMONATE,
+    InvoiceType.VERSICHERUNG: AllocationKey.PERSONENMONATE,
+    InvoiceType.SCHORNSTEINFEGER: AllocationKey.PERSONENMONATE,
+    InvoiceType.WASSER_ABWASSER: AllocationKey.PERSONENMONATE,
+    InvoiceType.MUELL: AllocationKey.PERSONENMONATE,
+    InvoiceType.KABEL: AllocationKey.PERSONENMONATE,
+    InvoiceType.HEIZUNG_GEBAEUDE: AllocationKey.PERSONENMONATE,
 }
 
 

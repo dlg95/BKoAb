@@ -1,5 +1,5 @@
 import { Outlet } from "react-router-dom"
-import { Building2, Coffee, FileText, Landmark, LayoutDashboard, Scale, Settings } from "lucide-react"
+import { Building2, Coffee, FileText, LayoutDashboard, Scale, Settings } from "lucide-react"
 
 import { LinkButton } from "@/components/link-button"
 import { buttonVariants } from "@/components/ui/button"
@@ -50,10 +50,6 @@ export function Layout() {
               <Building2 className="mr-1 size-4" />
               WG-Wohnungen
             </LinkButton>
-            <LinkButton variant="ghost" size="sm" to="/gebaeude">
-              <Landmark className="mr-1 size-4" />
-              Gebäude
-            </LinkButton>
             <LinkButton variant="ghost" size="sm" to="/einstellungen">
               <Settings className="mr-1 size-4" />
               Briefkopf
@@ -66,7 +62,8 @@ export function Layout() {
         </div>
       </header>
       <p className="border-b px-6 py-1.5 text-center text-xs text-muted-foreground">
-        Betriebskosten-Abrechnung — Übereinheit & Untereinheit · Verteilerquote pro Rechnung
+        Betriebskosten-Abrechnung für WG-Wohnungen · Verteilerquote pro Rechnung (Standard:
+        Personenmonate)
       </p>
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
         <Outlet />
@@ -74,7 +71,8 @@ export function Layout() {
       <footer className="border-t bg-muted/30">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-6 py-4 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <p>
-            © {new Date().getFullYear()} Daniel Glauert · Private Anwendung · Verwendung auf eigene Gefahr
+            © {new Date().getFullYear()} Daniel Glauert · Private Anwendung · Verwendung auf eigene
+            Gefahr
           </p>
           <div className="flex flex-wrap gap-3">
             <LinkButton variant="link" size="sm" to="/rechtliches" className="h-auto px-0 text-xs">

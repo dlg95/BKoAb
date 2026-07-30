@@ -13,32 +13,53 @@ import { api } from "@/lib/api"
 import { BILLING_LABELS } from "@/lib/billing-labels"
 
 type BillingYearsCardProps = {
-  apartmentId: number
   unitName?: string
-}
+  kind?: "wg" | "mfh"
+} & (
+  | { apartmentId: number; propertyId?: never }
+  | { propertyId: number; apartmentId?: never }
+)
 
-export function BillingYearsCard({ apartmentId, unitName }: BillingYearsCardProps) {
+export function BillingYearsCard(props: BillingYearsCardProps) {
+  const { unitName, kind = props.propertyId ? "mfh" : "wg" } = props
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const currentYear = new Date().getFullYear()
   const [newYear, setNewYear] = useState(String(currentYear - 1))
 
+  const isProperty = "propertyId" in props && props.propertyId != null
+  const entityId = isProperty ? props.propertyId! : props.apartmentId!
+
   type YearRow = { id: number; year: number; status: string }
 
   const { data: years } = useQuery({
-    queryKey: ["billing-years", apartmentId],
-    queryFn: async (): Promise<YearRow[]> => api.billingYears(apartmentId),
-    enabled: !!apartmentId,
+    queryKey: isProperty ? ["property-billing-years", entityId] : ["billing-years", entityId],
+    queryFn: async (): Promise<YearRow[]> =>
+      isProperty ? api.propertyBillingYears(entityId) : api.billingYears(entityId),
+    enabled: !!entityId,
   })
 
   const createMutation = useMutation({
-    mutationFn: async (): Promise<YearRow> => api.createBillingYear(apartmentId, Number(newYear)),
+    mutationFn: async (): Promise<YearRow> =>
+      isProperty
+        ? api.createPropertyBillingYear(entityId, Number(newYear))
+        : api.createBillingYear(entityId, Number(newYear)),
     onSuccess: (created) => {
-      queryClient.invalidateQueries({ queryKey: ["billing-years", apartmentId] })
-      navigate(`/wohnungen/${apartmentId}/abrechnung/${created.year}`)
+      if (isProperty) {
+        queryClient.invalidateQueries({ queryKey: ["property-billing-years", entityId] })
+        navigate(`/gebaeude/${entityId}/abrechnung/${created.year}`)
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["billing-years", entityId] })
+        navigate(`/wohnungen/${entityId}/abrechnung/${created.year}`)
+      }
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
     },
   })
+
+  const billingPath = (year: number) =>
+    isProperty
+      ? `/gebaeude/${entityId}/abrechnung/${year}`
+      : `/wohnungen/${entityId}/abrechnung/${year}`
 
   return (
     <Card>
@@ -46,7 +67,7 @@ export function BillingYearsCard({ apartmentId, unitName }: BillingYearsCardProp
         <CardTitle>Abrechnungsjahre</CardTitle>
         <CardDescription>
           {unitName
-            ? `Kalenderjahres-Abrechnung für ${BILLING_LABELS.wg.topUnit} „${unitName}" (01.01.–31.12.)`
+            ? `Kalenderjahres-Abrechnung für ${BILLING_LABELS[kind].topUnit} „${unitName}" (01.01.–31.12.)`
             : "Pro Kalenderjahr eine eigene Abrechnung anlegen"}
         </CardDescription>
       </CardHeader>
@@ -54,12 +75,7 @@ export function BillingYearsCard({ apartmentId, unitName }: BillingYearsCardProp
         <div className="flex flex-wrap gap-2">
           {years?.length ? (
             years.map((by) => (
-              <LinkButton
-                key={by.id}
-                variant="outline"
-                size="sm"
-                to={`/wohnungen/${apartmentId}/abrechnung/${by.year}`}
-              >
+              <LinkButton key={by.id} variant="outline" size="sm" to={billingPath(by.year)}>
                 {by.year}
                 {by.status === "finalized" && (
                   <Badge variant="secondary" className="ml-2">

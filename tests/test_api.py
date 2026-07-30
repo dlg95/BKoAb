@@ -465,6 +465,7 @@ def test_mfh_property_invoice_distribution(client):
         f"/api/properties/{property_id}/billing-years/2025/invoices",
         json={
             "invoice_type": "grundsteuer",
+            "allocation_key": "flaeche_qm",
             "amount": "4800",
             "period_start": "2025-01-01",
             "period_end": "2025-12-31",
