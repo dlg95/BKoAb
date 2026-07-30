@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useNavigate } from "react-router-dom"
 import { useState } from "react"
 
 import { LinkButton } from "@/components/link-button"
@@ -10,6 +11,7 @@ import { api } from "@/lib/api"
 import { ALLOCATION_PER_INVOICE_HINT, BILLING_LABELS, TOP_UNIT_STAMMDATEN } from "@/lib/billing-labels"
 
 export function ApartmentsPage() {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: apartments } = useQuery({ queryKey: ["apartments"], queryFn: api.apartments })
   const [form, setForm] = useState({
@@ -27,10 +29,11 @@ export function ApartmentsPage() {
         city: form.city,
         total_area_sqm: form.total_area_sqm || null,
       }),
-    onSuccess: () => {
+    onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["apartments"] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
       setForm({ name: "", street: "", city: "", total_area_sqm: "" })
+      navigate(`/wohnungen/${created.id}`)
     },
   })
 
@@ -42,9 +45,8 @@ export function ApartmentsPage() {
         <CardHeader>
           <CardTitle>{BILLING_LABELS.wg.createTop}</CardTitle>
           <CardDescription>
-            {BILLING_LABELS.wg.hierarchyHint}. Zimmer (Untereinheiten) legen Sie danach in den Details an.
-            {" "}
-            {ALLOCATION_PER_INVOICE_HINT}
+            Ablauf: WG-Wohnung anlegen → Zimmer → Mietparteien. Nach dem Anlegen öffnen sich die
+            Details. {ALLOCATION_PER_INVOICE_HINT}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">

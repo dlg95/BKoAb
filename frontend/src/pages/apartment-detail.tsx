@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Navigate, useParams } from "react-router-dom"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Plus } from "lucide-react"
 
+import { GuidedLeaseDialog } from "@/components/guided-lease-dialog"
 import { LinkButton } from "@/components/link-button"
 import { BillingYearsCard } from "@/components/billing-years-card"
 import { Button } from "@/components/ui/button"
@@ -11,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { api } from "@/lib/api"
+import { formatSqm, wgAreaMismatch } from "@/lib/area"
 import { ALLOCATION_PER_INVOICE_HINT, BILLING_LABELS, TOP_UNIT_STAMMDATEN } from "@/lib/billing-labels"
 
 export function ApartmentDetailPage() {
@@ -22,6 +24,11 @@ export function ApartmentDetailPage() {
     queryFn: () => api.getApartment(apartmentId),
     enabled: !!apartmentId,
   })
+  const { data: leases } = useQuery({
+    queryKey: ["leases", apartmentId],
+    queryFn: () => api.leases(apartmentId),
+    enabled: !!apartmentId,
+  })
 
   const [form, setForm] = useState({
     name: "",
@@ -29,10 +36,9 @@ export function ApartmentDetailPage() {
     city: "",
     total_area_sqm: "",
   })
-  const [newRoomName, setNewRoomName] = useState("")
-  const [roomDrafts, setRoomDrafts] = useState<
-    Record<number, { name: string; area_sqm: string; consumption_amount: string }>
-  >({})
+  const [newRoom, setNewRoom] = useState({ name: "", area_sqm: "" })
+  const [roomDrafts, setRoomDrafts] = useState<Record<number, { name: string; area_sqm: string }>>({})
+  const [leasePrompt, setLeasePrompt] = useState<{ name: string; roomId: number } | null>(null)
 
   useEffect(() => {
     if (apartment) {
@@ -46,11 +52,7 @@ export function ApartmentDetailPage() {
         Object.fromEntries(
           apartment.rooms.map((room) => [
             room.id,
-            {
-              name: room.name,
-              area_sqm: room.area_sqm || "",
-              consumption_amount: room.consumption_amount || "",
-            },
+            { name: room.name, area_sqm: room.area_sqm || "" },
           ]),
         ),
       )
@@ -70,11 +72,13 @@ export function ApartmentDetailPage() {
   })
 
   const addRoomMutation = useMutation({
-    mutationFn: () => api.addRoom(apartmentId, newRoomName.trim()),
-    onSuccess: () => {
+    mutationFn: () => api.addRoom(apartmentId, newRoom.name.trim(), newRoom.area_sqm || undefined),
+    onSuccess: (room) => {
       queryClient.invalidateQueries({ queryKey: ["apartment", apartmentId] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
-      setNewRoomName("")
+      const name = newRoom.name.trim()
+      setNewRoom({ name: "", area_sqm: "" })
+      setLeasePrompt({ name, roomId: room.id })
     },
   })
 
@@ -83,6 +87,7 @@ export function ApartmentDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["apartment", apartmentId] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["leases", apartmentId] })
     },
   })
 
@@ -92,7 +97,6 @@ export function ApartmentDetailPage() {
       return api.updateRoom(roomId, {
         name: draft.name,
         area_sqm: draft.area_sqm || null,
-        consumption_amount: draft.consumption_amount || null,
       })
     },
     onSuccess: () => {
@@ -101,6 +105,20 @@ export function ApartmentDetailPage() {
     },
   })
 
+  const areaWarning = useMemo(() => {
+    if (!apartment) return null
+    const draftAreas = apartment.rooms.map((r) => roomDrafts[r.id]?.area_sqm ?? r.area_sqm)
+    return wgAreaMismatch(form.total_area_sqm || apartment.total_area_sqm, draftAreas)
+  }, [apartment, form.total_area_sqm, roomDrafts])
+
+  const leaseCountByRoom = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const lease of leases ?? []) {
+      map.set(lease.room_id, (map.get(lease.room_id) ?? 0) + 1)
+    }
+    return map
+  }, [leases])
+
   if (!apartment) return <p>Laden…</p>
 
   if (apartment.billing_kind === "mfh" && apartment.property_id) {
@@ -108,24 +126,176 @@ export function ApartmentDetailPage() {
   }
 
   const nextRoomLabel = `Zimmer ${apartment.rooms.length + 1}`
+  const roomsWithoutLease = apartment.rooms.filter((r) => (leaseCountByRoom.get(r.id) ?? 0) === 0)
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">{apartment.name}</h1>
-          <p className="text-sm text-muted-foreground">{BILLING_LABELS.wg.topUnit}</p>
+          <p className="text-sm text-muted-foreground">
+            {BILLING_LABELS.wg.hierarchyHint}
+          </p>
         </div>
         <LinkButton variant="outline" to={`/wohnungen/${apartmentId}/mietparteien`}>
-          Mietparteien
+          Alle Mietparteien
         </LinkButton>
       </div>
 
       <Card>
         <CardHeader>
+          <CardTitle>
+            {BILLING_LABELS.wg.subUnitPlural} ({apartment.rooms.length})
+          </CardTitle>
+          <CardDescription>
+            Zuerst Zimmer anlegen, danach je Zimmer die Mietparteien. {ALLOCATION_PER_INVOICE_HINT}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {apartment.rooms.length === 0 && (
+            <p className="rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm">
+              Noch keine Zimmer. Legen Sie das erste Zimmer an — danach werden Sie zur Mietpartei
+              geführt.
+            </p>
+          )}
+
+          {roomsWithoutLease.length > 0 && apartment.rooms.length > 0 && (
+            <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100">
+              Für {roomsWithoutLease.map((r) => r.name).join(", ")} fehlt noch eine Mietpartei
+              (optional, empfohlen).
+            </p>
+          )}
+
+          {apartment.rooms.length > 0 && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Bezeichnung</TableHead>
+                  <TableHead>Fläche (m²)</TableHead>
+                  <TableHead>Mietparteien</TableHead>
+                  <TableHead className="min-w-[12rem]" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {apartment.rooms.map((room) => {
+                  const draft = roomDrafts[room.id] ?? {
+                    name: room.name,
+                    area_sqm: room.area_sqm || "",
+                  }
+                  const leaseCount = leaseCountByRoom.get(room.id) ?? 0
+                  return (
+                    <TableRow key={room.id}>
+                      <TableCell>
+                        <Input
+                          value={draft.name}
+                          onChange={(e) =>
+                            setRoomDrafts({
+                              ...roomDrafts,
+                              [room.id]: { ...draft, name: e.target.value },
+                            })
+                          }
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={draft.area_sqm}
+                          onChange={(e) =>
+                            setRoomDrafts({
+                              ...roomDrafts,
+                              [room.id]: { ...draft, area_sqm: e.target.value },
+                            })
+                          }
+                          className="w-32"
+                        />
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {leaseCount === 0 ? "keine" : `${leaseCount}`}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => saveRoomMutation.mutate(room.id)}
+                            disabled={saveRoomMutation.isPending || !draft.name.trim()}
+                          >
+                            Speichern
+                          </Button>
+                          <LinkButton
+                            size="sm"
+                            to={`/wohnungen/${apartmentId}/mietparteien?room=${room.id}`}
+                          >
+                            Mietpartei
+                          </LinkButton>
+                          {apartment.rooms.length > 1 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => deleteRoomMutation.mutate(room.id)}
+                              disabled={deleteRoomMutation.isPending}
+                            >
+                              Entfernen
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          )}
+
+          {areaWarning && (
+            <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100">
+              Die Summe der Zimmerflächen ({formatSqm(areaWarning.roomsSum)} m²) weicht von der
+              WG-Gesamtfläche ({formatSqm(areaWarning.total)} m²) ab. Bei WG-Abrechnungen sollten
+              diese übereinstimmen.
+            </p>
+          )}
+
+          <div className="flex flex-wrap items-end gap-2 border-t pt-4">
+            <div className="space-y-2">
+              <Label>
+                {apartment.rooms.length === 0
+                  ? "Erstes Zimmer"
+                  : `Weiteres ${BILLING_LABELS.wg.subUnit}`}
+              </Label>
+              <Input
+                value={newRoom.name}
+                onChange={(e) => setNewRoom({ ...newRoom, name: e.target.value })}
+                placeholder={nextRoomLabel}
+                className="w-48"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Fläche (m²)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={newRoom.area_sqm}
+                onChange={(e) => setNewRoom({ ...newRoom, area_sqm: e.target.value })}
+                className="w-32"
+              />
+            </div>
+            <Button
+              onClick={() => addRoomMutation.mutate()}
+              disabled={!newRoom.name.trim() || addRoomMutation.isPending}
+            >
+              <Plus className="mr-1 size-4" />
+              Zimmer anlegen
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Stammdaten</CardTitle>
           <CardDescription>
-            Gesamtfläche dient als Nenner bei m²-Kostenverteilungen.
+            Gesamtfläche der WG-Wohnung. Die Summe der Zimmerflächen sollte damit übereinstimmen.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
@@ -157,126 +327,15 @@ export function ApartmentDetailPage() {
 
       <BillingYearsCard apartmentId={apartmentId} unitName={apartment.name} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{BILLING_LABELS.wg.subUnitPlural} ({apartment.rooms.length})</CardTitle>
-          <CardDescription>
-            Untereinheiten der WG-Wohnung. Personenmonate je {BILLING_LABELS.wg.subUnit} ergeben sich aus
-            Bewohnerzahl und Mietzeitraum — relevant für Rechnungen mit Verteilerquote Personenmonate.
-            Leerstehende {BILLING_LABELS.wg.subUnitPlural} zählen als fiktive Personenmonate beim Vermieter.
-            {" "}
-            {ALLOCATION_PER_INVOICE_HINT}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Bezeichnung</TableHead>
-                <TableHead>Fläche (m²)</TableHead>
-                <TableHead>Verbrauch</TableHead>
-                <TableHead className="w-32" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {apartment.rooms.map((room) => {
-                const draft = roomDrafts[room.id] ?? {
-                  name: room.name,
-                  area_sqm: room.area_sqm || "",
-                  consumption_amount: room.consumption_amount || "",
-                }
-                return (
-                  <TableRow key={room.id}>
-                    <TableCell>
-                      <Input
-                        value={draft.name}
-                        onChange={(e) =>
-                          setRoomDrafts({
-                            ...roomDrafts,
-                            [room.id]: { ...draft, name: e.target.value },
-                          })
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={draft.area_sqm}
-                        onChange={(e) =>
-                          setRoomDrafts({
-                            ...roomDrafts,
-                            [room.id]: { ...draft, area_sqm: e.target.value },
-                          })
-                        }
-                        className="w-32"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={draft.consumption_amount}
-                        onChange={(e) =>
-                          setRoomDrafts({
-                            ...roomDrafts,
-                            [room.id]: { ...draft, consumption_amount: e.target.value },
-                          })
-                        }
-                        className="w-32"
-                        placeholder="z.B. m³"
-                      />
-                    </TableCell>
-                    <TableCell className="space-x-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => saveRoomMutation.mutate(room.id)}
-                        disabled={saveRoomMutation.isPending || !draft.name.trim()}
-                      >
-                        Speichern
-                      </Button>
-                      {apartment.rooms.length > 1 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteRoomMutation.mutate(room.id)}
-                          disabled={deleteRoomMutation.isPending}
-                        >
-                          Entfernen
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-
-          <div className="flex flex-wrap items-end gap-2 border-t pt-4">
-            <div className="space-y-2">
-              <Label>
-                {apartment.rooms.length === 0
-                  ? `${BILLING_LABELS.wg.subUnit} hinzufügen`
-                  : `Weiteres ${BILLING_LABELS.wg.subUnit} hinzufügen`}
-              </Label>
-              <Input
-                value={newRoomName}
-                onChange={(e) => setNewRoomName(e.target.value)}
-                placeholder={nextRoomLabel}
-                className="w-64"
-              />
-            </div>
-            <Button
-              onClick={() => addRoomMutation.mutate()}
-              disabled={!newRoomName.trim() || addRoomMutation.isPending}
-            >
-              <Plus className="mr-1 size-4" />
-              {BILLING_LABELS.wg.subUnit} anlegen
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <GuidedLeaseDialog
+        open={leasePrompt != null}
+        onOpenChange={(open) => {
+          if (!open) setLeasePrompt(null)
+        }}
+        subUnitLabel={BILLING_LABELS.wg.subUnit}
+        subUnitName={leasePrompt?.name ?? ""}
+        leasesPath={`/wohnungen/${apartmentId}/mietparteien?room=${leasePrompt?.roomId ?? ""}`}
+      />
     </div>
   )
 }

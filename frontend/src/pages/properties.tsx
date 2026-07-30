@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useNavigate } from "react-router-dom"
 import { useState } from "react"
 
 import { LinkButton } from "@/components/link-button"
@@ -10,6 +11,7 @@ import { api } from "@/lib/api"
 import { ALLOCATION_PER_INVOICE_HINT, BILLING_LABELS, TOP_UNIT_STAMMDATEN } from "@/lib/billing-labels"
 
 export function PropertiesPage() {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: properties } = useQuery({ queryKey: ["properties"], queryFn: api.properties })
   const mfhProperties = properties?.filter((p) => p.property_type !== "einfamilien") ?? []
@@ -28,10 +30,11 @@ export function PropertiesPage() {
         city: form.city,
         total_area_sqm: form.total_area_sqm || null,
       }),
-    onSuccess: () => {
+    onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["properties"] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
       setForm({ name: "", street: "", city: "", total_area_sqm: "" })
+      navigate(`/gebaeude/${created.id}`)
     },
   })
 
@@ -43,7 +46,8 @@ export function PropertiesPage() {
         <CardHeader>
           <CardTitle>{BILLING_LABELS.mfh.createTop}</CardTitle>
           <CardDescription>
-            {BILLING_LABELS.mfh.hierarchyHint}. {ALLOCATION_PER_INVOICE_HINT}
+            Ablauf: Gebäude anlegen → Wohnungen → Mietparteien. Nach dem Anlegen öffnen sich die
+            Details. {ALLOCATION_PER_INVOICE_HINT}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">

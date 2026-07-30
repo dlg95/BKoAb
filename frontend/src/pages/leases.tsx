@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useParams } from "react-router-dom"
-import { useState } from "react"
+import { useParams, useSearchParams } from "react-router-dom"
+import { useEffect, useState } from "react"
 
 import { LinkButton } from "@/components/link-button"
 import { PersonPeriodsEditor } from "@/components/person-periods-editor"
@@ -22,9 +22,11 @@ function formatPersonPeriods(lease: { person_periods: { valid_from: string; vali
 
 export function LeasesPage() {
   const { id } = useParams()
+  const [searchParams] = useSearchParams()
   const apartmentId = Number(id)
   const queryClient = useQueryClient()
   const [editingLeaseId, setEditingLeaseId] = useState<number | null>(null)
+  const guidedRoomId = searchParams.get("room")
 
   const { data: apartment } = useQuery({
     queryKey: ["apartment", apartmentId],
@@ -40,11 +42,17 @@ export function LeasesPage() {
   const [form, setForm] = useState({
     tenant_name: "",
     tenant_contact: "",
-    room_id: "",
+    room_id: guidedRoomId || "",
     persons: "1",
     move_in: "",
     move_out: "",
   })
+
+  useEffect(() => {
+    if (guidedRoomId) {
+      setForm((prev) => ({ ...prev, room_id: guidedRoomId }))
+    }
+  }, [guidedRoomId])
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -92,6 +100,16 @@ export function LeasesPage() {
           {isMfhUnit ? "Zum Gebäude" : "Zurück"}
         </LinkButton>
       </div>
+
+      {guidedRoomId && (
+        <p className="rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm">
+          Guided Setup: legen Sie mindestens eine Mietpartei
+          {apartment?.rooms.find((r) => String(r.id) === guidedRoomId)
+            ? ` für „${apartment.rooms.find((r) => String(r.id) === guidedRoomId)?.name}“`
+            : ""}{" "}
+          an. Sie können das überspringen und später nachholen.
+        </p>
+      )}
 
       <Card>
         <CardHeader>
