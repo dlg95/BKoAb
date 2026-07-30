@@ -1,0 +1,17 @@
+BKoAb – Betriebskostenabrechnung
+
+Installation
+1. Dieses DMG öffnen
+2. „BKoAb“ auf „Programme“ ziehen
+3. App per Doppelklick starten (öffnet den Browser)
+
+Daten
+Die Datenbank und Exporte liegen unter:
+  ~/Library/Application Support/BKoAb/
+
+PDF-Export
+Für „PDF erstellen“ wird LibreOffice benötigt (optional):
+  brew install --cask libreoffice
+
+Beenden
+App im Dock beenden (Rechtsklick → Beenden) oder das Terminal-/App-Fenster schließen.

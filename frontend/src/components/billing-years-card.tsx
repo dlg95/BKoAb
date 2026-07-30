@@ -30,15 +30,17 @@ export function BillingYearsCard(props: BillingYearsCardProps) {
   const isProperty = "propertyId" in props && props.propertyId != null
   const entityId = isProperty ? props.propertyId! : props.apartmentId!
 
+  type YearRow = { id: number; year: number; status: string }
+
   const { data: years } = useQuery({
     queryKey: isProperty ? ["property-billing-years", entityId] : ["billing-years", entityId],
-    queryFn: () =>
+    queryFn: async (): Promise<YearRow[]> =>
       isProperty ? api.propertyBillingYears(entityId) : api.billingYears(entityId),
     enabled: !!entityId,
   })
 
   const createMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: async (): Promise<YearRow> =>
       isProperty
         ? api.createPropertyBillingYear(entityId, Number(newYear))
         : api.createBillingYear(entityId, Number(newYear)),

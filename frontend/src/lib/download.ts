@@ -20,12 +20,21 @@ export async function fetchDocxExport(url: string, fallbackFilename: string) {
   return fetchExport(url, fallbackFilename)
 }
 
+type FileSystemAccessWindow = Window & {
+  showDirectoryPicker?: (options?: { mode?: "read" | "readwrite" }) => Promise<FileSystemDirectoryHandle>
+  showSaveFilePicker?: (options?: {
+    suggestedName?: string
+    types?: { description: string; accept: Record<string, string[]> }[]
+  }) => Promise<FileSystemFileHandle>
+}
+
 export async function pickExportDirectory() {
-  if (!("showDirectoryPicker" in window)) {
+  const w = window as FileSystemAccessWindow
+  if (!w.showDirectoryPicker) {
     return null
   }
   try {
-    return await window.showDirectoryPicker({ mode: "readwrite" })
+    return await w.showDirectoryPicker({ mode: "readwrite" })
   } catch {
     return null
   }
@@ -47,15 +56,16 @@ export async function saveExportBlob(
     return "directory" as const
   }
 
-  if ("showSaveFilePicker" in window) {
+  const w = window as FileSystemAccessWindow
+  if (w.showSaveFilePicker) {
     try {
       const accept: Record<string, string[]> = {}
       if (mimeType && extension) {
         accept[mimeType] = [extension]
       }
-      const fileHandle = await window.showSaveFilePicker({
+      const fileHandle = await w.showSaveFilePicker({
         suggestedName: filename,
-        types: accept
+        types: Object.keys(accept).length
           ? [{ description, accept }]
           : undefined,
       })

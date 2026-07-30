@@ -1,12 +1,12 @@
-# Build frontend
-FROM node:22-bookworm AS frontend
+# Build frontend on the host platform (avoids QEMU node crashes on Apple Silicon).
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS frontend
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
 COPY frontend/ ./
 RUN pnpm build
 
-# Runtime: FastAPI + static SPA
+# Runtime: FastAPI + static SPA (linux/amd64 for Cloudflare Containers)
 FROM python:3.12-slim-bookworm
 WORKDIR /app
 

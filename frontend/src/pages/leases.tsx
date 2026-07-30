@@ -115,7 +115,7 @@ export function LeasesPage() {
               <Input value={singleRoom.name} disabled />
             ) : (
             <Select
-              value={form.room_id || (singleRoom ? String(singleRoom.id) : null)}
+              value={form.room_id || null}
               items={roomItems}
               onValueChange={(v) => v && setForm({ ...form, room_id: v })}
             >
