@@ -67,7 +67,7 @@ ALLOCATION_KEY_LABELS = {
     AllocationKey.PERSONENMONATE: "Personenmonate",
     AllocationKey.FLAECHE_QM: "Fläche (m²)",
     AllocationKey.WOHNEINHEITEN: "Wohneinheiten (gleich)",
-    AllocationKey.DIREKTZUORDNUNG: "Direktzuordnung (z.B. Verbrauch)",
+    AllocationKey.DIREKTZUORDNUNG: "Direktzuordnung (ausgewählte Mietparteien)",
     AllocationKey.MEA: "Miteigentumsanteile",
 }
 
@@ -312,6 +312,7 @@ class InvoiceCreate(BaseModel):
     note: str = ""
     allocation_key: AllocationKey | None = None
     allocation_scope: AllocationScope = AllocationScope.UNIT
+    target_lease_ids: list[int] = Field(default_factory=list)
 
     @field_validator("amount")
     @classmethod
@@ -341,6 +342,7 @@ class InvoiceRead(BaseModel):
     note: str
     prorated_amount: Decimal | None = None
     has_document: bool = False
+    target_lease_ids: list[int] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

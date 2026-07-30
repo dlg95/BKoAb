@@ -73,6 +73,8 @@ def run_migrations(engine: Engine) -> None:
                 )
             if "has_document" not in cols:
                 conn.execute(text("ALTER TABLE invoices ADD COLUMN has_document BOOLEAN DEFAULT 0 NOT NULL"))
+            if "target_lease_ids_json" not in cols:
+                conn.execute(text("ALTER TABLE invoices ADD COLUMN target_lease_ids_json TEXT"))
 
             _migrate_invoices_nullable_billing_year(conn, engine)
 

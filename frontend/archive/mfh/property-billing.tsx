@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { api, DEFAULT_ALLOCATION_BY_TYPE, formatEur } from "@/lib/api"
-import { ALLOCATION_ITEMS, ALLOCATION_KEYS, ALLOCATION_PER_INVOICE_HINT } from "@/lib/billing-labels"
+import { ALLOCATION_KEYS_MFH, ALLOCATION_ITEMS_MFH, ALLOCATION_PER_INVOICE_HINT } from "@/lib/billing-labels"
 
 const INVOICE_TYPES = [
   { value: "grundsteuer", label: "Grundsteuer" },
@@ -203,12 +203,12 @@ export function PropertyBillingPage() {
                 <Label>Verteilerquote</Label>
                 <Select
                   value={invoiceForm.allocation_key}
-                  items={ALLOCATION_ITEMS}
+                  items={ALLOCATION_ITEMS_MFH}
                   onValueChange={(v) => v && setInvoiceForm({ ...invoiceForm, allocation_key: v })}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {ALLOCATION_KEYS.map((k) => (
+                    {ALLOCATION_KEYS_MFH.map((k) => (
                       <SelectItem key={k.value} value={k.value}>{k.label}</SelectItem>
                     ))}
                   </SelectContent>

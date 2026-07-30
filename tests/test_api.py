@@ -530,20 +530,7 @@ def test_wohneinheiten_allocation_on_wg(client):
 
 def test_direktzuordnung_allocation_on_wg(client):
     rooms = client.get("/api/apartments/1").json()["rooms"]
-    client.put(f"/api/rooms/{rooms[0]['id']}", json={"consumption_amount": "30"})
-    client.put(f"/api/rooms/{rooms[1]['id']}", json={"consumption_amount": "70"})
-    client.post(
-        "/api/apartments/1/billing-years/2025/invoices",
-        json={
-            "invoice_type": "wasser_abwasser",
-            "allocation_key": "direktzuordnung",
-            "label": "Wasser",
-            "amount": "100",
-            "period_start": "2025-01-01",
-            "period_end": "2025-12-31",
-        },
-    )
-    client.post(
+    bernd = client.post(
         "/api/apartments/1/leases",
         json={
             "tenant_name": "Bernd",
@@ -552,15 +539,71 @@ def test_direktzuordnung_allocation_on_wg(client):
             "move_in": "2025-01-01",
             "move_out": "2025-12-31",
         },
+    ).json()
+    leases = client.get("/api/apartments/1/leases").json()
+    anna_lease = next(lease for lease in leases if lease["tenant_name"] == "Anna")
+    bernd_lease_id = bernd["id"]
+
+    # Only Anna selected → equal split among selected (100% Anna); Bernd sees no line
+    created = client.post(
+        "/api/apartments/1/billing-years/2025/invoices",
+        json={
+            "invoice_type": "wasser_abwasser",
+            "allocation_key": "direktzuordnung",
+            "label": "Wasser Anna",
+            "amount": "100",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+            "target_lease_ids": [anna_lease["id"]],
+        },
     )
+    assert created.status_code == 201
+    assert created.json()["target_lease_ids"] == [anna_lease["id"]]
+
     preview = client.get("/api/apartments/1/billing-years/2025/preview").json()
     anna = next(p for p in preview["parties"] if p["tenant_name"] == "Anna")
-    bernd = next(p for p in preview["parties"] if p["tenant_name"] == "Bernd")
-    water_anna = next(item for item in anna["cost_lines"] if item["label"].startswith("Wasser"))
-    water_bernd = next(item for item in bernd["cost_lines"] if item["label"].startswith("Wasser"))
+    bernd_party = next(p for p in preview["parties"] if p["tenant_name"] == "Bernd")
+    water_anna = next(item for item in anna["cost_lines"] if "Wasser Anna" in item["label"])
     assert water_anna["allocation_key"] == "direktzuordnung"
-    assert float(water_anna["party_share"]) == pytest.approx(30.0)
-    assert float(water_bernd["party_share"]) == pytest.approx(70.0)
+    assert float(water_anna["party_share"]) == pytest.approx(100.0)
+    assert not any("Wasser Anna" in item["label"] for item in bernd_party["cost_lines"])
+
+    # Both selected → equal split 50/50
+    both = client.post(
+        "/api/apartments/1/billing-years/2025/invoices",
+        json={
+            "invoice_type": "sonstiges",
+            "allocation_key": "direktzuordnung",
+            "label": "Internet",
+            "amount": "60",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+            "target_lease_ids": [anna_lease["id"], bernd_lease_id],
+        },
+    )
+    assert both.status_code == 201
+    preview = client.get("/api/apartments/1/billing-years/2025/preview").json()
+    anna = next(p for p in preview["parties"] if p["tenant_name"] == "Anna")
+    bernd_party = next(p for p in preview["parties"] if p["tenant_name"] == "Bernd")
+    net_anna = next(item for item in anna["cost_lines"] if "Internet" in item["label"])
+    net_bernd = next(item for item in bernd_party["cost_lines"] if "Internet" in item["label"])
+    assert float(net_anna["party_share"]) == pytest.approx(30.0)
+    assert float(net_bernd["party_share"]) == pytest.approx(30.0)
+
+    # Missing targets rejected for WG invoices
+    missing = client.post(
+        "/api/apartments/1/billing-years/2025/invoices",
+        json={
+            "invoice_type": "sonstiges",
+            "allocation_key": "direktzuordnung",
+            "label": "Ohne Auswahl",
+            "amount": "10",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+            "target_lease_ids": [],
+        },
+    )
+    assert missing.status_code == 400
 
 
 def test_mea_property_invoice_distribution(client):

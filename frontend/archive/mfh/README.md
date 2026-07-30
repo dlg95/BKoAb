@@ -33,3 +33,4 @@ import { PropertyBillingPage } from "@/pages/property-billing"
 3. Nav-Link „Gebäude“ in `layout.tsx` wieder einfügen.
 4. Dashboard: MFH-Anlegen-Button und `kind === "mfh"`-Zweige wiederherstellen.
 5. Import-Pfade und aktuelle WG-UI (Guided Flow, Flächenregeln) abgleichen.
+6. Verteilerquoten: Gebäude-UI nutzt `ALLOCATION_KEYS_MFH` / `ALLOCATION_ITEMS_MFH` (inkl. **MEA**). Die WG-Liste `ALLOCATION_KEYS` enthält MEA bewusst nicht.

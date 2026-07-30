@@ -81,6 +81,7 @@ export type Invoice = {
   note: string
   prorated_amount: string | null
   has_document: boolean
+  target_lease_ids: number[]
 }
 
 export type AdvancePaymentRow = {

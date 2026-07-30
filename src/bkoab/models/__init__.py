@@ -237,6 +237,8 @@ class Invoice(Base):
     period_end: Mapped[date] = mapped_column(Date)
     note: Mapped[str] = mapped_column(Text, default="")
     has_document: Mapped[bool] = mapped_column(Boolean, default=False)
+    # JSON list of lease IDs for Direktzuordnung (even split among selected parties)
+    target_lease_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     billing_year: Mapped["BillingYear | None"] = relationship(
         back_populates="invoices", foreign_keys=[billing_year_id]

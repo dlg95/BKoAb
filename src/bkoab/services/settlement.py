@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy.orm import Session, joinedload
@@ -45,6 +46,21 @@ class ProcessedInvoice:
     allocation_key: AllocationKey
     total_prorated: Decimal
     has_document: bool
+    target_lease_ids: frozenset[int] = field(default_factory=frozenset)
+
+
+def _decode_target_lease_ids(raw: str | None) -> frozenset[int]:
+    if not raw:
+        return frozenset()
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return frozenset()
+    if not isinstance(data, list):
+        return frozenset()
+    return frozenset(
+        int(x) for x in data if isinstance(x, (int, float, str)) and str(x).isdigit()
+    )
 
 
 def _money(value: Decimal | float) -> Decimal:
@@ -81,6 +97,9 @@ def _process_invoices(invoices: list[Invoice], year: int, warnings: list[str]) -
                 allocation_key=invoice.allocation_key,
                 total_prorated=_money(prorated),
                 has_document=invoice.has_document,
+                target_lease_ids=_decode_target_lease_ids(
+                    getattr(invoice, "target_lease_ids_json", None)
+                ),
             )
         )
     return processed
@@ -426,6 +445,19 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
 
     parties: list[PartySettlement] = []
     mea_warnings: set[str] = set()
+    direkt_warnings: set[str] = set()
+
+    for inv in processed_unit:
+        if inv.allocation_key != AllocationKey.DIREKTZUORDNUNG:
+            continue
+        if not inv.target_lease_ids:
+            direkt_warnings.add(
+                f"{inv.label}: Direktzuordnung ohne ausgewählte Mietparteien"
+            )
+        elif not any(lid in inv.target_lease_ids for lid in active_lease_ids):
+            direkt_warnings.add(
+                f"{inv.label}: Keine ausgewählten Mietparteien im Abrechnungszeitraum"
+            )
 
     for lease_id, lease_info in active_leases.items():
         hm = party_head_months.get(lease_id, Decimal("0"))
@@ -453,8 +485,14 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
                 )
                 display_key = AllocationKeySchema.WOHNEINHEITEN
             elif inv.allocation_key == AllocationKey.DIREKTZUORDNUNG:
-                numerator, denominator, share = _unit_direct_assignment_share_by_room(
-                    inv.total_prorated, lease_id, leases_db, room_consumption
+                targets = inv.target_lease_ids
+                if not targets or lease_id not in targets:
+                    continue
+                eligible = [lid for lid in active_lease_ids if lid in targets]
+                if not eligible:
+                    continue
+                numerator, denominator, share = _unit_equal_share(
+                    inv.total_prorated, lease_id, eligible
                 )
                 display_key = AllocationKeySchema.DIREKTZUORDNUNG
             elif inv.allocation_key == AllocationKey.MEA:
@@ -547,6 +585,7 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
 
     parties.sort(key=lambda p: p.tenant_name)
     warnings.extend(sorted(mea_warnings))
+    warnings.extend(sorted(direkt_warnings))
 
     return SettlementPreview(
         apartment_id=apartment_id,

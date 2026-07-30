@@ -50,6 +50,7 @@ function defaultInvoiceForm(year: number) {
     period_start: `${year}-01-01`,
     period_end: `${year}-12-31`,
     note: "",
+    target_lease_ids: [] as number[],
   }
 }
 
@@ -80,6 +81,11 @@ export function BillingPage() {
     queryFn: () => api.invoices(apartmentId, billingYear),
     enabled: !!apartmentId && !!billingYear && !!billingYearInfo,
   })
+  const { data: leases } = useQuery({
+    queryKey: ["leases", apartmentId],
+    queryFn: () => api.leases(apartmentId),
+    enabled: !!apartmentId,
+  })
   const { data: advanceRows } = useQuery({
     queryKey: ["advance", apartmentId, billingYear],
     queryFn: () => api.advancePayments(apartmentId, billingYear),
@@ -100,6 +106,9 @@ export function BillingPage() {
   const [exportingLeaseId, setExportingLeaseId] = useState<number | null>(null)
   const [exportingFormat, setExportingFormat] = useState<"docx" | "pdf" | null>(null)
   const [exportStatus, setExportStatus] = useState<string | null>(null)
+
+  const direktzuordnungIncomplete =
+    invoiceForm.allocation_key === "direktzuordnung" && invoiceForm.target_lease_ids.length === 0
 
   const createInvoice = useMutation({
     mutationFn: async () => {
@@ -160,6 +169,7 @@ export function BillingPage() {
       period_start: invoice.period_start,
       period_end: invoice.period_end,
       note: invoice.note,
+      target_lease_ids: invoice.target_lease_ids ?? [],
     })
   }
 
@@ -318,7 +328,15 @@ export function BillingPage() {
                 <Select
                   value={invoiceForm.allocation_key}
                   items={ALLOCATION_ITEMS}
-                  onValueChange={(v) => v && setInvoiceForm({ ...invoiceForm, allocation_key: v })}
+                  onValueChange={(v) =>
+                    v &&
+                    setInvoiceForm({
+                      ...invoiceForm,
+                      allocation_key: v,
+                      target_lease_ids:
+                        v === "direktzuordnung" ? invoiceForm.target_lease_ids : [],
+                    })
+                  }
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -328,6 +346,42 @@ export function BillingPage() {
                   </SelectContent>
                 </Select>
               </div>
+              {invoiceForm.allocation_key === "direktzuordnung" ? (
+                <div className="space-y-2 md:col-span-3">
+                  <Label>Mietparteien für Direktzuordnung</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Die Rechnung wird gleichmäßig auf die ausgewählten Mietparteien verteilt und erscheint nur bei diesen in der Abrechnung.
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(leases ?? []).map((lease) => {
+                      const checked = invoiceForm.target_lease_ids.includes(lease.id)
+                      return (
+                        <label
+                          key={lease.id}
+                          className="flex items-center gap-2 text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              const next = checked
+                                ? invoiceForm.target_lease_ids.filter((id) => id !== lease.id)
+                                : [...invoiceForm.target_lease_ids, lease.id]
+                              setInvoiceForm({ ...invoiceForm, target_lease_ids: next })
+                            }}
+                          />
+                          <span>
+                            {lease.tenant_name} ({lease.room_name})
+                          </span>
+                        </label>
+                      )
+                    })}
+                    {!leases?.length ? (
+                      <p className="text-sm text-muted-foreground">Keine Mietparteien vorhanden.</p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               <div className="space-y-2">
                 <Label>Bezeichnung</Label>
                 <Input value={invoiceForm.label} onChange={(e) => setInvoiceForm({ ...invoiceForm, label: e.target.value })} />
@@ -369,7 +423,7 @@ export function BillingPage() {
                   <>
                     <Button
                       onClick={() => updateInvoice.mutate()}
-                      disabled={!invoiceForm.amount || updateInvoice.isPending}
+                      disabled={!invoiceForm.amount || direktzuordnungIncomplete || updateInvoice.isPending}
                     >
                       Speichern
                     </Button>
@@ -378,7 +432,10 @@ export function BillingPage() {
                     </Button>
                   </>
                 ) : (
-                  <Button onClick={() => createInvoice.mutate()} disabled={!invoiceForm.amount || createInvoice.isPending}>
+                  <Button
+                    onClick={() => createInvoice.mutate()}
+                    disabled={!invoiceForm.amount || direktzuordnungIncomplete || createInvoice.isPending}
+                  >
                     Hinzufügen
                   </Button>
                 )}

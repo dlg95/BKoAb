@@ -8,6 +8,7 @@ from bkoab.config import EXPORTS_DIR, INVOICES_DIR, LETTERHEADS_DIR, MAX_INVOICE
 from bkoab.database import get_db
 from bkoab.models import (
     AdvancePayment,
+    AllocationKey,
     AllocationScope,
     Apartment,
     BillingYear,
@@ -75,6 +76,28 @@ def _invoice_year(invoice: Invoice, db: Session) -> int:
     raise HTTPException(400, "Abrechnungsjahr nicht ermittelbar")
 
 
+def _encode_target_lease_ids(lease_ids: list[int] | None) -> str | None:
+    if not lease_ids:
+        return None
+    import json
+
+    return json.dumps(sorted({int(x) for x in lease_ids}))
+
+
+def _decode_target_lease_ids(raw: str | None) -> list[int]:
+    if not raw:
+        return []
+    import json
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [int(x) for x in data if isinstance(x, (int, float, str)) and str(x).isdigit()]
+
+
 def _invoice_to_read(invoice: Invoice, year: int) -> InvoiceRead:
     prorated, _ = prorate_amount(float(invoice.amount), invoice.period_start, invoice.period_end, year)
     return InvoiceRead(
@@ -93,6 +116,7 @@ def _invoice_to_read(invoice: Invoice, year: int) -> InvoiceRead:
         note=invoice.note,
         prorated_amount=Decimal(str(round(prorated, 2))),
         has_document=invoice.has_document,
+        target_lease_ids=_decode_target_lease_ids(invoice.target_lease_ids_json),
     )
 
 
@@ -234,6 +258,11 @@ def _get_or_create_property_billing_year(db: Session, property_id: int, year: in
 
 def _create_invoice_model(payload: InvoiceCreate, *, billing_year_id: int | None, property_billing_year_id: int | None):
     allocation_key = payload.allocation_key or default_allocation_key(payload.invoice_type)
+    targets = list(dict.fromkeys(payload.target_lease_ids or []))
+    if allocation_key == AllocationKey.DIREKTZUORDNUNG and billing_year_id is not None and not targets:
+        raise HTTPException(400, "Direktzuordnung: bitte mindestens eine Mietpartei auswählen.")
+    if allocation_key != AllocationKey.DIREKTZUORDNUNG:
+        targets = []
     return Invoice(
         billing_year_id=billing_year_id,
         property_billing_year_id=property_billing_year_id,
@@ -245,6 +274,7 @@ def _create_invoice_model(payload: InvoiceCreate, *, billing_year_id: int | None
         period_start=payload.period_start,
         period_end=payload.period_end,
         note=payload.note,
+        target_lease_ids_json=_encode_target_lease_ids(targets),
     )
 
 
@@ -390,6 +420,12 @@ def update_invoice(invoice_id: int, payload: InvoiceUpdate, db: Session = Depend
     invoice.period_end = payload.period_end
     invoice.note = payload.note
     invoice.allocation_key = payload.allocation_key or default_allocation_key(payload.invoice_type)
+    targets = list(dict.fromkeys(payload.target_lease_ids or []))
+    if invoice.allocation_key == AllocationKey.DIREKTZUORDNUNG and invoice.billing_year_id is not None and not targets:
+        raise HTTPException(400, "Direktzuordnung: bitte mindestens eine Mietpartei auswählen.")
+    if invoice.allocation_key != AllocationKey.DIREKTZUORDNUNG:
+        targets = []
+    invoice.target_lease_ids_json = _encode_target_lease_ids(targets)
     if invoice.billing_year_id:
         invoice.allocation_scope = AllocationScope.UNIT
     elif invoice.property_billing_year_id:

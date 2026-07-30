@@ -13,7 +13,19 @@ export function billingKind(propertyType: string, unitCount: number): BillingKin
 export const ALLOCATION_PER_INVOICE_HINT =
   "Standard-Verteilerquote ist Personenmonate (pro Kopf); andere Quoten bleiben pro Rechnung wählbar."
 
+/** WG Verteilerquoten — ohne MEA (sinnlos für Zimmer). */
 export const ALLOCATION_KEYS = [
+  { value: "personenmonate", label: "Personenmonate" },
+  { value: "flaeche_qm", label: "Fläche (m²)" },
+  { value: "wohneinheiten", label: "Wohneinheiten (gleich)" },
+  { value: "direktzuordnung", label: "Direktzuordnung (ausgewählte Mietparteien)" },
+] as const
+
+/**
+ * Gebäude / MFH / WEG — inkl. MEA.
+ * Für Wiedereinbau der archivierten Gebäude-UI unter `frontend/archive/mfh/`.
+ */
+export const ALLOCATION_KEYS_MFH = [
   { value: "personenmonate", label: "Personenmonate" },
   { value: "flaeche_qm", label: "Fläche (m²)" },
   { value: "wohneinheiten", label: "Wohneinheiten (gleich)" },
@@ -23,6 +35,10 @@ export const ALLOCATION_KEYS = [
 
 export const ALLOCATION_ITEMS = Object.fromEntries(
   ALLOCATION_KEYS.map((key) => [key.value, key.label]),
+)
+
+export const ALLOCATION_ITEMS_MFH = Object.fromEntries(
+  ALLOCATION_KEYS_MFH.map((key) => [key.value, key.label]),
 )
 
 export const BILLING_LABELS = {
