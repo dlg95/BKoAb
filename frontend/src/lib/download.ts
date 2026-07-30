@@ -15,6 +15,17 @@ export async function fetchExport(url: string, fallbackFilename: string) {
   return { blob, filename }
 }
 
+export async function fetchExportGet(url: string, fallbackFilename: string) {
+  const response = await fetch(url)
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(text || response.statusText)
+  }
+  const blob = await response.blob()
+  const filename = parseFilename(response.headers.get("Content-Disposition"), fallbackFilename)
+  return { blob, filename }
+}
+
 /** @deprecated use fetchExport */
 export async function fetchDocxExport(url: string, fallbackFilename: string) {
   return fetchExport(url, fallbackFilename)

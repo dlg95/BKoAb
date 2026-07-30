@@ -1,4 +1,4 @@
-import { fetchExport } from "@/lib/download"
+import { fetchExport, fetchExportGet } from "@/lib/download"
 
 const API_BASE = "/api"
 
@@ -269,6 +269,8 @@ export const api = {
     ),
   landlord: () => request<LandlordProfile | null>("/landlord-profile"),
   updateLandlord: (data: object) => request<LandlordProfile>("/landlord-profile", { method: "PUT", body: JSON.stringify(data) }),
+  exportAllUserData: () =>
+    fetchExportGet(`${API_BASE}/data-export`, "BKoAb_Datenexport.zip"),
 }
 
 export function formatEur(value: string | number) {

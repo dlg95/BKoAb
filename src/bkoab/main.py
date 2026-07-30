@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from bkoab.api.billing import router as billing_router
 from bkoab.api.dashboard import router as dashboard_router
+from bkoab.api.data_export import router as data_export_router
 from bkoab.api.leases import router as leases_router
 from bkoab.api.properties import router as properties_router
 from bkoab.config import BASE_DIR
@@ -57,6 +58,7 @@ app.include_router(dashboard_router)
 app.include_router(leases_router)
 app.include_router(billing_router)
 app.include_router(properties_router)
+app.include_router(data_export_router)
 
 
 @app.get("/health")

@@ -52,7 +52,7 @@ export function Layout() {
             </LinkButton>
             <LinkButton variant="ghost" size="sm" to="/einstellungen">
               <Settings className="mr-1 size-4" />
-              Briefkopf
+              Einstellungen
             </LinkButton>
             <LinkButton variant="ghost" size="sm" to="/rechtliches">
               <Scale className="mr-1 size-4" />
