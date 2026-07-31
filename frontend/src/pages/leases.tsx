@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useParams } from "react-router-dom"
-import { useState } from "react"
+import { useParams, useSearchParams } from "react-router-dom"
+import { useEffect, useState } from "react"
 
 import { LinkButton } from "@/components/link-button"
 import { PersonPeriodsEditor } from "@/components/person-periods-editor"
@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { api } from "@/lib/api"
+import { BILLING_LABELS } from "@/lib/billing-labels"
 
 function formatPersonPeriods(lease: { person_periods: { valid_from: string; valid_to: string | null; persons: number }[]; persons: number }) {
   if (!lease.person_periods.length) return `${lease.persons} Personen`
@@ -21,9 +22,11 @@ function formatPersonPeriods(lease: { person_periods: { valid_from: string; vali
 
 export function LeasesPage() {
   const { id } = useParams()
+  const [searchParams] = useSearchParams()
   const apartmentId = Number(id)
   const queryClient = useQueryClient()
   const [editingLeaseId, setEditingLeaseId] = useState<number | null>(null)
+  const guidedRoomId = searchParams.get("room")
 
   const { data: apartment } = useQuery({
     queryKey: ["apartment", apartmentId],
@@ -39,18 +42,24 @@ export function LeasesPage() {
   const [form, setForm] = useState({
     tenant_name: "",
     tenant_contact: "",
-    room_id: "",
+    room_id: guidedRoomId || "",
     persons: "1",
     move_in: "",
     move_out: "",
   })
+
+  useEffect(() => {
+    if (guidedRoomId) {
+      setForm((prev) => ({ ...prev, room_id: guidedRoomId }))
+    }
+  }, [guidedRoomId])
 
   const createMutation = useMutation({
     mutationFn: () =>
       api.createLease(apartmentId, {
         tenant_name: form.tenant_name,
         tenant_contact: form.tenant_contact,
-        room_id: Number(form.room_id),
+        room_id: Number(form.room_id || singleRoom?.id),
         persons: Number(form.persons),
         move_in: form.move_in,
         move_out: form.move_out || null,
@@ -67,6 +76,8 @@ export function LeasesPage() {
   })
 
   const editingLease = leases?.find((l) => l.id === editingLeaseId)
+  const subUnitLabel = BILLING_LABELS.wg.subUnit
+  const singleRoom = apartment?.rooms.length === 1 ? apartment.rooms[0] : null
   const roomItems = Object.fromEntries(
     (apartment?.rooms ?? []).map((room) => [String(room.id), room.name]),
   )
@@ -79,9 +90,19 @@ export function LeasesPage() {
           <p className="text-muted-foreground">{apartment?.name}</p>
         </div>
         <LinkButton variant="outline" to={`/wohnungen/${apartmentId}`}>
-          Zurück
+          Zur WG-Wohnung
         </LinkButton>
       </div>
+
+      {guidedRoomId && (
+        <p className="rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm">
+          Guided Setup: legen Sie mindestens eine Mietpartei
+          {apartment?.rooms.find((r) => String(r.id) === guidedRoomId)
+            ? ` für „${apartment.rooms.find((r) => String(r.id) === guidedRoomId)?.name}“`
+            : ""}{" "}
+          an. Sie können das überspringen und später nachholen.
+        </p>
+      )}
 
       <Card>
         <CardHeader>
@@ -100,14 +121,17 @@ export function LeasesPage() {
             <Input value={form.tenant_contact} onChange={(e) => setForm({ ...form, tenant_contact: e.target.value })} />
           </div>
           <div className="space-y-2">
-            <Label>Zimmer</Label>
+            <Label>{subUnitLabel}</Label>
+            {singleRoom ? (
+              <Input value={singleRoom.name} disabled />
+            ) : (
             <Select
               value={form.room_id || null}
               items={roomItems}
               onValueChange={(v) => v && setForm({ ...form, room_id: v })}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Zimmer wählen" />
+                <SelectValue placeholder={`${subUnitLabel} wählen`} />
               </SelectTrigger>
               <SelectContent>
                 {apartment?.rooms.map((room) => (
@@ -117,6 +141,7 @@ export function LeasesPage() {
                 ))}
               </SelectContent>
             </Select>
+            )}
           </div>
           <div className="space-y-2">
             <Label>Personen (initial)</Label>
@@ -133,7 +158,7 @@ export function LeasesPage() {
           <div className="md:col-span-3">
             <Button
               onClick={() => createMutation.mutate()}
-              disabled={!form.tenant_name || !form.room_id || !form.move_in || createMutation.isPending}
+              disabled={!form.tenant_name || (!form.room_id && !singleRoom) || !form.move_in || createMutation.isPending}
             >
               Anlegen
             </Button>

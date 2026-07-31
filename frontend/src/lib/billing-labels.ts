@@ -1,0 +1,81 @@
+/** Parallel naming: same hierarchy, different labels per scenario. */
+
+export type BillingKind = "wg" | "mfh"
+
+export function billingKind(propertyType: string, unitCount: number): BillingKind {
+  if (propertyType === "mfh" || propertyType === "weg" || unitCount > 1) {
+    return "mfh"
+  }
+  return "wg"
+}
+
+/** Applies to WG and MFH alike — allocation is per invoice, not per object type. */
+export const ALLOCATION_PER_INVOICE_HINT =
+  "Standard-Verteilerquote ist Personenmonate (pro Kopf); andere Quoten bleiben pro Rechnung wählbar."
+
+/** WG Verteilerquoten — ohne MEA (sinnlos für Zimmer). */
+export const ALLOCATION_KEYS = [
+  { value: "personenmonate", label: "Personenmonate" },
+  { value: "flaeche_qm", label: "Fläche (m²)" },
+  { value: "wohneinheiten", label: "Wohneinheiten (gleich)" },
+  { value: "direktzuordnung", label: "Direktzuordnung (ausgewählte Mietparteien)" },
+] as const
+
+/**
+ * Gebäude / MFH / WEG — inkl. MEA.
+ * Für Wiedereinbau der archivierten Gebäude-UI unter `frontend/archive/mfh/`.
+ */
+export const ALLOCATION_KEYS_MFH = [
+  { value: "personenmonate", label: "Personenmonate" },
+  { value: "flaeche_qm", label: "Fläche (m²)" },
+  { value: "wohneinheiten", label: "Wohneinheiten (gleich)" },
+  { value: "direktzuordnung", label: "Direktzuordnung (z.B. Verbrauch)" },
+  { value: "mea", label: "Miteigentumsanteile" },
+] as const
+
+export const ALLOCATION_ITEMS = Object.fromEntries(
+  ALLOCATION_KEYS.map((key) => [key.value, key.label]),
+)
+
+export const ALLOCATION_ITEMS_MFH = Object.fromEntries(
+  ALLOCATION_KEYS_MFH.map((key) => [key.value, key.label]),
+)
+
+export const BILLING_LABELS = {
+  wg: {
+    topUnit: "WG-Wohnung",
+    topUnitPlural: "WG-Wohnungen",
+    subUnit: "Zimmer",
+    subUnitPlural: "Zimmer",
+    createTop: "WG-Wohnung anlegen",
+    manageTop: "WG-Wohnung verwalten",
+    hierarchyHint:
+      "Übereinheit = WG-Wohnung · Untereinheit = Zimmer · Mietparteien mit Personenzeiträumen",
+  },
+  mfh: {
+    topUnit: "Gebäude",
+    topUnitPlural: "Gebäude",
+    subUnit: "Wohnung",
+    subUnitPlural: "Wohnungen",
+    createTop: "Gebäude anlegen",
+    manageTop: "Gebäude verwalten",
+    hierarchyHint:
+      "Übereinheit = Gebäude (MFH/WEG) · Untereinheit = Wohnung · Nutzfläche für Flächen-Rechnungen",
+  },
+} as const
+
+export function labelsFor(kind: BillingKind) {
+  return BILLING_LABELS[kind]
+}
+
+export const TOP_UNIT_STAMMDATEN = {
+  name: "Bezeichnung",
+  street: "Straße",
+  city: "PLZ / Ort",
+  total_area_sqm: "Gesamtfläche (m²)",
+} as const
+
+export function subUnitLabel(kind: BillingKind, count: number) {
+  const labels = labelsFor(kind)
+  return count === 1 ? labels.subUnit : labels.subUnitPlural
+}

@@ -1,0 +1,16 @@
+.venv
+.git
+.pytest_cache
+.mypy_cache
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+data
+frontend/node_modules
+frontend/dist
+node_modules
+worker/node_modules
+*.log
+.DS_Store
+.env
+.wrangler

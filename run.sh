@@ -8,6 +8,9 @@ fi
 source .venv/bin/activate
 pip install -q -e ".[dev]"
 
+# DOCX: python-docx · PDF: dxpdf (im Python-Paket). LibreOffice ist optionaler Fallback.
+# Optional: ./scripts/ensure_export_deps.sh
+
 cleanup() {
   trap - EXIT INT TERM
   [[ -n "${API_PID:-}" ]] && kill "$API_PID" 2>/dev/null || true
@@ -15,7 +18,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-mkdir -p data/exports data/letterheads
+mkdir -p data/exports data/letterheads data/invoices
 
 uvicorn bkoab.main:app --reload --host 127.0.0.1 --port 8000 &
 API_PID=$!

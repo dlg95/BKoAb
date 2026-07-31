@@ -88,6 +88,82 @@ def head_months_for_lease(lease: LeasePeriod, year: int) -> Decimal:
     return total.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
+@dataclass
+class UnitArea:
+    unit_id: int
+    living_area_sqm: Decimal
+
+
+@dataclass
+class UnitShareData:
+    unit_id: int
+    mea_share: Decimal
+    consumption_amount: Decimal
+
+
+def compute_equal_unit_shares(unit_count: int, is_member: bool) -> tuple[Decimal, Decimal, Decimal]:
+    """Returns (numerator, denominator, share_ratio) for equal split among units."""
+    count = Decimal(unit_count)
+    if count <= 0 or not is_member:
+        return Decimal("0"), count, Decimal("0")
+    ratio = (Decimal("1") / count).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    return Decimal("1"), count, ratio
+
+
+def compute_mea_shares(units: list[UnitShareData], target_unit_id: int) -> tuple[Decimal, Decimal, Decimal]:
+    unit_mea = next((u.mea_share for u in units if u.unit_id == target_unit_id), Decimal("0"))
+    total = sum((u.mea_share for u in units if u.mea_share > 0), Decimal("0"))
+    if total <= 0 or unit_mea <= 0:
+        return unit_mea, total, Decimal("0")
+    ratio = (unit_mea / total).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    return unit_mea, total, ratio
+
+
+def compute_direct_assignment_shares(
+    amounts: dict[int, Decimal],
+    target_id: int,
+) -> tuple[Decimal, Decimal, Decimal]:
+    """Direct assignment by consumption or other per-unit amount. target_id = room_id or unit_id."""
+    value = amounts.get(target_id, Decimal("0"))
+    total = sum((amount for amount in amounts.values() if amount > 0), Decimal("0"))
+    if total <= 0 or value <= 0:
+        return value, total, Decimal("0")
+    ratio = (value / total).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    return value, total, ratio
+
+
+def compute_area_shares(
+    units: list[UnitArea],
+    target_unit_id: int,
+    property_total_area_sqm: Decimal | None = None,
+) -> tuple[Decimal, Decimal, Decimal]:
+    """Returns (unit_area, total_area, share_ratio). Total prefers property Gesamt-m²."""
+    unit_area = next(
+        (u.living_area_sqm for u in units if u.unit_id == target_unit_id),
+        Decimal("0"),
+    )
+    if property_total_area_sqm and property_total_area_sqm > 0:
+        total = property_total_area_sqm
+    else:
+        total = sum((u.living_area_sqm for u in units if u.living_area_sqm > 0), Decimal("0"))
+    if total <= 0 or unit_area <= 0:
+        return unit_area, total, Decimal("0")
+    share = (unit_area / total).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    return unit_area, total, share
+
+
+def compute_room_area_shares(
+    lease_room_areas: dict[int, Decimal],
+    lease_id: int,
+) -> tuple[Decimal, Decimal, Decimal]:
+    total = sum((area for area in lease_room_areas.values() if area > 0), Decimal("0"))
+    room_area = lease_room_areas.get(lease_id, Decimal("0"))
+    if total <= 0 or room_area <= 0:
+        return room_area, total, Decimal("0")
+    share = (room_area / total).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    return room_area, total, share
+
+
 def compute_head_months(
     leases: list[LeasePeriod],
     room_ids: list[int],

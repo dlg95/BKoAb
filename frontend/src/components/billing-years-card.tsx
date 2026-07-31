@@ -10,30 +10,33 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { api } from "@/lib/api"
+import { BILLING_LABELS } from "@/lib/billing-labels"
 
 type BillingYearsCardProps = {
   apartmentId: number
-  apartmentName?: string
+  unitName?: string
 }
 
-export function BillingYearsCard({ apartmentId, apartmentName }: BillingYearsCardProps) {
+export function BillingYearsCard({ apartmentId, unitName }: BillingYearsCardProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const currentYear = new Date().getFullYear()
   const [newYear, setNewYear] = useState(String(currentYear - 1))
 
+  type YearRow = { id: number; year: number; status: string }
+
   const { data: years } = useQuery({
     queryKey: ["billing-years", apartmentId],
-    queryFn: () => api.billingYears(apartmentId),
+    queryFn: async (): Promise<YearRow[]> => api.billingYears(apartmentId),
     enabled: !!apartmentId,
   })
 
   const createMutation = useMutation({
-    mutationFn: () => api.createBillingYear(apartmentId, Number(newYear)),
+    mutationFn: async (): Promise<YearRow> => api.createBillingYear(apartmentId, Number(newYear)),
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["billing-years", apartmentId] })
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
       navigate(`/wohnungen/${apartmentId}/abrechnung/${created.year}`)
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
     },
   })
 
@@ -42,8 +45,8 @@ export function BillingYearsCard({ apartmentId, apartmentName }: BillingYearsCar
       <CardHeader>
         <CardTitle>Abrechnungsjahre</CardTitle>
         <CardDescription>
-          {apartmentName
-            ? `Kalenderjahres-Abrechnungen für ${apartmentName} (01.01.–31.12.)`
+          {unitName
+            ? `Kalenderjahres-Abrechnung für ${BILLING_LABELS.wg.topUnit} „${unitName}" (01.01.–31.12.)`
             : "Pro Kalenderjahr eine eigene Abrechnung anlegen"}
         </CardDescription>
       </CardHeader>
@@ -51,7 +54,12 @@ export function BillingYearsCard({ apartmentId, apartmentName }: BillingYearsCar
         <div className="flex flex-wrap gap-2">
           {years?.length ? (
             years.map((by) => (
-              <LinkButton key={by.id} variant="outline" size="sm" to={`/wohnungen/${apartmentId}/abrechnung/${by.year}`}>
+              <LinkButton
+                key={by.id}
+                variant="outline"
+                size="sm"
+                to={`/wohnungen/${apartmentId}/abrechnung/${by.year}`}
+              >
                 {by.year}
                 {by.status === "finalized" && (
                   <Badge variant="secondary" className="ml-2">

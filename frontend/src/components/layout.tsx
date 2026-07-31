@@ -1,20 +1,27 @@
 import { Outlet } from "react-router-dom"
-import { Building2, Coffee, FileText, Settings } from "lucide-react"
+import { Building2, Coffee, FileText, LayoutDashboard, Scale, Settings } from "lucide-react"
 
 import { LinkButton } from "@/components/link-button"
 import { buttonVariants } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { LEGAL_BANNER } from "@/lib/legal"
 import { cn } from "@/lib/utils"
 
 export function Layout() {
   return (
-    <div className="min-h-svh bg-background">
+    <div className="flex min-h-svh flex-col bg-background">
       <div className="border-b bg-muted/40">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-2">
           <p className="max-w-4xl text-xs leading-relaxed text-muted-foreground">
-            Dieses Tool wurde von Daniel Glauert zur privaten Nutzung erstellt. Es ist keine
-            Steuer- oder Finanzberatung; es wird keinerlei Haftung übernommen. Frei nutzbar,
-            aber nicht weiterlizenziert oder kommerzialisiert. © Daniel Glauert.
+            {LEGAL_BANNER}{" "}
+            <LinkButton
+              variant="link"
+              size="sm"
+              to="/rechtliches"
+              className="h-auto px-0 text-xs text-muted-foreground underline"
+            >
+              Nutzungsbedingungen & Haftungsausschluss
+            </LinkButton>
           </p>
           <a
             href="https://paypal.me/danielglauert"
@@ -34,27 +41,55 @@ export function Layout() {
             BKoAb
           </div>
           <Separator orientation="vertical" className="h-6" />
-          <nav className="flex gap-2">
+          <nav className="flex flex-wrap gap-2">
             <LinkButton variant="ghost" size="sm" to="/">
-              Dashboard
+              <LayoutDashboard className="mr-1 size-4" />
+              Abrechnungs-Dashboard
             </LinkButton>
             <LinkButton variant="ghost" size="sm" to="/wohnungen">
               <Building2 className="mr-1 size-4" />
-              Wohnungen
+              WG-Wohnungen
             </LinkButton>
             <LinkButton variant="ghost" size="sm" to="/einstellungen">
               <Settings className="mr-1 size-4" />
-              Briefkopf
+              Einstellungen
+            </LinkButton>
+            <LinkButton variant="ghost" size="sm" to="/rechtliches">
+              <Scale className="mr-1 size-4" />
+              Rechtliches
             </LinkButton>
           </nav>
         </div>
       </header>
       <p className="border-b px-6 py-1.5 text-center text-xs text-muted-foreground">
-        Betriebskosten-Abrechnungstool für WG-Vermietungen mit pro-Personen-Umlage
+        Betriebskosten-Abrechnung für WG-Wohnungen · Verteilerquote pro Rechnung (Standard:
+        Personenmonate)
       </p>
-      <main className="mx-auto max-w-6xl px-6 py-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
         <Outlet />
       </main>
+      <footer className="border-t bg-muted/30">
+        <div className="mx-auto flex max-w-6xl flex-col gap-2 px-6 py-4 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            © {new Date().getFullYear()} Daniel Glauert · Private Anwendung · Verwendung auf eigene
+            Gefahr
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <LinkButton variant="link" size="sm" to="/rechtliches" className="h-auto px-0 text-xs">
+              Nutzungsbedingungen
+            </LinkButton>
+            <LinkButton variant="link" size="sm" to="/rechtliches" className="h-auto px-0 text-xs">
+              Haftungsausschluss
+            </LinkButton>
+            <LinkButton variant="link" size="sm" to="/rechtliches" className="h-auto px-0 text-xs">
+              Drittlizenzen
+            </LinkButton>
+            <LinkButton variant="link" size="sm" to="/rechtliches" className="h-auto px-0 text-xs">
+              Keine Steuerberatung
+            </LinkButton>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }

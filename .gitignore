@@ -1,3 +1,8 @@
+node_modules/
+.wrangler/
+.dev.vars
+worker/node_modules/
+
 .venv/
 __pycache__/
 *.py[cod]
@@ -10,6 +15,7 @@ build/
 data/bkoab.db
 data/exports/
 data/letterheads/
+data/invoices/
 
 node_modules/
 frontend/dist/
@@ -19,3 +25,7 @@ frontend/node_modules/
 .env
 .DS_Store
 *.log
+
+# LibreOffice macOS DMG cache / optional local vendor copy (large)
+vendor/libreoffice-macos/
+vendor/LibreOffice.app/

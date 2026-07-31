@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
-from pathlib import Path
+import os
+import signal
+import threading
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,7 +9,9 @@ from fastapi.staticfiles import StaticFiles
 
 from bkoab.api.billing import router as billing_router
 from bkoab.api.dashboard import router as dashboard_router
+from bkoab.api.data_export import router as data_export_router
 from bkoab.api.leases import router as leases_router
+from bkoab.api.properties import router as properties_router
 from bkoab.config import BASE_DIR
 from bkoab.database import SessionLocal, init_db
 from bkoab.models import LandlordProfile
@@ -38,7 +42,13 @@ app = FastAPI(title="BKoAb", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_origins=[
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+    ],
+    allow_origin_regex=r"https?://(127\.0\.0\.1|localhost)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -47,6 +57,25 @@ app.add_middleware(
 app.include_router(dashboard_router)
 app.include_router(leases_router)
 app.include_router(billing_router)
+app.include_router(properties_router)
+app.include_router(data_export_router)
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.post("/api/shutdown")
+def shutdown():
+    """Stop the local server (used by the macOS .app)."""
+
+    def _kill() -> None:
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Timer(0.4, _kill).start()
+    return {"ok": True}
+
 
 frontend_dist = BASE_DIR / "frontend" / "dist"
 if frontend_dist.exists():

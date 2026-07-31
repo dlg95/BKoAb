@@ -10,6 +10,25 @@ class BillingStatus(str, Enum):
     FINALIZED = "finalized"
 
 
+class PropertyType(str, Enum):
+    EINFAMILIEN = "einfamilien"
+    MFH = "mfh"
+    WEG = "weg"
+
+
+class AllocationKey(str, Enum):
+    PERSONENMONATE = "personenmonate"
+    FLAECHE_QM = "flaeche_qm"
+    WOHNEINHEITEN = "wohneinheiten"
+    DIREKTZUORDNUNG = "direktzuordnung"
+    MEA = "mea"
+
+
+class AllocationScope(str, Enum):
+    UNIT = "unit"
+    PROPERTY = "property"
+
+
 class InvoiceType(str, Enum):
     WEG = "weg"
     GAS = "gas"
@@ -17,6 +36,14 @@ class InvoiceType(str, Enum):
     HANDWERKER = "handwerker"
     GRUNDSTEUER = "grundsteuer"
     SONSTIGES = "sonstiges"
+    HAUSMEISTER = "hausmeister"
+    AUFZUG = "aufzug"
+    VERSICHERUNG = "versicherung"
+    SCHORNSTEINFEGER = "schornsteinfeger"
+    WASSER_ABWASSER = "wasser_abwasser"
+    MUELL = "muell"
+    KABEL = "kabel"
+    HEIZUNG_GEBAEUDE = "heizung_gebaeude"
 
 
 INVOICE_TYPE_LABELS = {
@@ -26,16 +53,120 @@ INVOICE_TYPE_LABELS = {
     InvoiceType.HANDWERKER: "Handwerker",
     InvoiceType.GRUNDSTEUER: "Grundsteuer",
     InvoiceType.SONSTIGES: "Sonstiges",
+    InvoiceType.HAUSMEISTER: "Hausmeister / Reinigung",
+    InvoiceType.AUFZUG: "Aufzug / Lift",
+    InvoiceType.VERSICHERUNG: "Gebäudeversicherung",
+    InvoiceType.SCHORNSTEINFEGER: "Schornsteinfeger",
+    InvoiceType.WASSER_ABWASSER: "Wasser / Abwasser",
+    InvoiceType.MUELL: "Müll / Straßenreinigung",
+    InvoiceType.KABEL: "Kabel / Gemeinschaftsantenne",
+    InvoiceType.HEIZUNG_GEBAEUDE: "Heizkosten (Gebäude)",
 }
+
+ALLOCATION_KEY_LABELS = {
+    AllocationKey.PERSONENMONATE: "Personenmonate",
+    AllocationKey.FLAECHE_QM: "Fläche (m²)",
+    AllocationKey.WOHNEINHEITEN: "Wohneinheiten (gleich)",
+    AllocationKey.DIREKTZUORDNUNG: "Direktzuordnung (ausgewählte Mietparteien)",
+    AllocationKey.MEA: "Miteigentumsanteile",
+}
+
+PROPERTY_TYPE_LABELS = {
+    PropertyType.EINFAMILIEN: "Einfamilienhaus / WG",
+    PropertyType.MFH: "Mehrfamilienhaus",
+    PropertyType.WEG: "WEG",
+}
+
+DEFAULT_ALLOCATION_BY_INVOICE_TYPE: dict[InvoiceType, AllocationKey] = {
+    # WG focus: default is always head-months; other keys remain selectable in the UI.
+    InvoiceType.WEG: AllocationKey.PERSONENMONATE,
+    InvoiceType.GAS: AllocationKey.PERSONENMONATE,
+    InvoiceType.STROM: AllocationKey.PERSONENMONATE,
+    InvoiceType.HANDWERKER: AllocationKey.PERSONENMONATE,
+    InvoiceType.GRUNDSTEUER: AllocationKey.PERSONENMONATE,
+    InvoiceType.SONSTIGES: AllocationKey.PERSONENMONATE,
+    InvoiceType.HAUSMEISTER: AllocationKey.PERSONENMONATE,
+    InvoiceType.AUFZUG: AllocationKey.PERSONENMONATE,
+    InvoiceType.VERSICHERUNG: AllocationKey.PERSONENMONATE,
+    InvoiceType.SCHORNSTEINFEGER: AllocationKey.PERSONENMONATE,
+    InvoiceType.WASSER_ABWASSER: AllocationKey.PERSONENMONATE,
+    InvoiceType.MUELL: AllocationKey.PERSONENMONATE,
+    InvoiceType.KABEL: AllocationKey.PERSONENMONATE,
+    InvoiceType.HEIZUNG_GEBAEUDE: AllocationKey.PERSONENMONATE,
+}
+
+
+def default_allocation_key(invoice_type: InvoiceType) -> AllocationKey:
+    return DEFAULT_ALLOCATION_BY_INVOICE_TYPE.get(invoice_type, AllocationKey.PERSONENMONATE)
 
 
 class RoomCreate(BaseModel):
     name: str
+    area_sqm: Decimal | None = None
+    consumption_amount: Decimal | None = None
+
+
+class RoomUpdate(BaseModel):
+    name: str | None = None
+    area_sqm: Decimal | None = None
+    consumption_amount: Decimal | None = None
 
 
 class RoomRead(BaseModel):
     id: int
     name: str
+    area_sqm: Decimal | None = None
+    consumption_amount: Decimal | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class PropertyCreate(BaseModel):
+    name: str
+    street: str = ""
+    city: str = ""
+    total_area_sqm: Decimal | None = None
+    common_area_sqm: Decimal | None = None
+    property_type: PropertyType = PropertyType.MFH
+
+
+class PropertyUpdate(BaseModel):
+    name: str | None = None
+    street: str | None = None
+    city: str | None = None
+    total_area_sqm: Decimal | None = None
+    common_area_sqm: Decimal | None = None
+    property_type: PropertyType | None = None
+
+
+class PropertyUnitSummary(BaseModel):
+    id: int
+    name: str
+    living_area_sqm: Decimal | None
+    mea_share: Decimal | None = None
+    consumption_amount: Decimal | None = None
+    room_count: int
+
+
+class PropertyRead(BaseModel):
+    id: int
+    name: str
+    street: str
+    city: str
+    total_area_sqm: Decimal | None
+    common_area_sqm: Decimal | None
+    property_type: PropertyType
+    property_type_label: str
+    units: list[PropertyUnitSummary] = Field(default_factory=list)
+
+    model_config = {"from_attributes": True}
+
+
+class PropertyBillingYearRead(BaseModel):
+    id: int
+    property_id: int
+    year: int
+    status: BillingStatus
 
     model_config = {"from_attributes": True}
 
@@ -44,29 +175,33 @@ class ApartmentCreate(BaseModel):
     name: str
     street: str = ""
     city: str = ""
-    iban: str = ""
-    account_holder: str = ""
-    payment_reference_hint: str = ""
+    total_area_sqm: Decimal | None = None
+    living_area_sqm: Decimal | None = None
     rooms: list[RoomCreate] = Field(default_factory=list)
+    property_id: int | None = None
 
 
 class ApartmentUpdate(BaseModel):
     name: str | None = None
     street: str | None = None
     city: str | None = None
-    iban: str | None = None
-    account_holder: str | None = None
-    payment_reference_hint: str | None = None
+    total_area_sqm: Decimal | None = None
+    living_area_sqm: Decimal | None = None
+    mea_share: Decimal | None = None
+    consumption_amount: Decimal | None = None
 
 
 class ApartmentRead(BaseModel):
     id: int
+    property_id: int | None
+    billing_kind: str = "wg"
     name: str
     street: str
     city: str
-    iban: str
-    account_holder: str
-    payment_reference_hint: str
+    total_area_sqm: Decimal | None
+    living_area_sqm: Decimal | None = None
+    mea_share: Decimal | None = None
+    consumption_amount: Decimal | None = None
     rooms: list[RoomRead] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
@@ -175,6 +310,9 @@ class InvoiceCreate(BaseModel):
     period_start: date
     period_end: date
     note: str = ""
+    allocation_key: AllocationKey | None = None
+    allocation_scope: AllocationScope = AllocationScope.UNIT
+    target_lease_ids: list[int] = Field(default_factory=list)
 
     @field_validator("amount")
     @classmethod
@@ -190,15 +328,21 @@ class InvoiceUpdate(InvoiceCreate):
 
 class InvoiceRead(BaseModel):
     id: int
-    billing_year_id: int
+    billing_year_id: int | None
+    property_billing_year_id: int | None
     invoice_type: InvoiceType
     invoice_type_label: str
+    allocation_key: AllocationKey
+    allocation_key_label: str
+    allocation_scope: AllocationScope
     label: str
     amount: Decimal
     period_start: date
     period_end: date
     note: str
     prorated_amount: Decimal | None = None
+    has_document: bool = False
+    target_lease_ids: list[int] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -224,9 +368,12 @@ class AdvancePaymentMatrixRow(BaseModel):
 class CostLineItem(BaseModel):
     invoice_id: int
     label: str
+    allocation_key: AllocationKey
     total_prorated: Decimal
-    party_head_months: Decimal
+    party_numerator: Decimal
+    party_denominator: Decimal
     party_share: Decimal
+    has_document: bool = False
 
 
 class PartySettlement(BaseModel):
@@ -234,6 +381,7 @@ class PartySettlement(BaseModel):
     tenant_name: str
     room_name: str
     head_months: Decimal
+    living_area_sqm: Decimal | None
     cost_lines: list[CostLineItem]
     total_costs: Decimal
     total_advance_payments: Decimal
@@ -246,6 +394,8 @@ class SettlementPreview(BaseModel):
     year: int
     total_head_months: Decimal
     landlord_vacancy_head_months: Decimal
+    total_property_area_sqm: Decimal | None
+    unit_area_sqm: Decimal | None
     parties: list[PartySettlement]
     warnings: list[str] = Field(default_factory=list)
 
@@ -275,11 +425,40 @@ class LandlordProfileUpdate(BaseModel):
 class DashboardApartmentSummary(BaseModel):
     id: int
     name: str
+    property_id: int | None
+    property_name: str | None
     room_count: int
     active_lease_count: int
     billing_years: list[int]
 
 
+class DashboardPropertySummary(BaseModel):
+    id: int
+    name: str
+    property_type: PropertyType
+    unit_count: int
+    total_area_sqm: Decimal | None
+    billing_years: list[int]
+
+
+class DashboardBillingUnit(BaseModel):
+    """Unified top-level billing object — WG-Wohnung or MFH-Gebäude."""
+
+    kind: str  # "wg" | "mfh"
+    property_id: int
+    apartment_id: int | None
+    name: str
+    street: str
+    city: str
+    sub_unit_count: int
+    sub_unit_label: str
+    active_lease_count: int
+    billing_years: list[int]
+    total_area_sqm: Decimal | None = None
+
+
 class DashboardRead(BaseModel):
-    apartments: list[DashboardApartmentSummary]
+    billing_units: list[DashboardBillingUnit]
+    apartments: list[DashboardApartmentSummary] = Field(default_factory=list)
+    properties: list[DashboardPropertySummary] = Field(default_factory=list)
     landlord: LandlordProfileRead | None
