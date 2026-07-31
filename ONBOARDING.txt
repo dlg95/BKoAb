@@ -11,9 +11,9 @@ Die Datenbank und Exporte liegen unter:
 
 DOCX- und PDF-Export
 DOCX wird direkt von der App erzeugt (python-docx).
-PDF (Abrechnung + Belege) nutzt LibreOffice, das in dieser App
-mitgeliefert wird (MPL-2.0, siehe THIRD_PARTY_NOTICES.md im Bundle).
-Keine separate Installation nötig.
+PDF nutzt dxpdf (MIT, mitgeliefert) — keine LibreOffice-Installation nötig.
+Optionaler Fallback: LibreOffice, falls lokal vorhanden.
+Weitere Infos: THIRD_PARTY_NOTICES.md / App unter „Rechtliches“.
 
 Beenden
 App im Dock beenden (Rechtsklick → Beenden) oder das Terminal-/App-Fenster schließen.

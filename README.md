@@ -35,6 +35,13 @@ Die Nutzung erfolgt vollständig **auf eigene Gefahr**. Soweit gesetzlich zuläs
 
 Nutzung für eigene, nicht kommerzielle Zwecke ist gestattet, soweit freigegeben. Weiterlizenzierung, Weiterverkauf, kommerzielle Vermarktung oder Darstellung als offizielles/geprüftes Produkt sind nicht gestattet, sofern nicht ausdrücklich schriftlich etwas anderes vereinbart wurde. Beim Teilen oder Hosting dürfen diese Hinweise nicht entfernt oder verfälscht werden.
 
+### Drittanbieter: PDF-Export
+
+PDF-Export läuft primär über **dxpdf** (MIT, ~13 MB). LibreOffice ist nur noch
+optionaler Fallback. Hinweise: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+bzw. in der App unter `/rechtliches`. LibreOffice-Lizenzen:
+[https://www.libreoffice.org/licenses/](https://www.libreoffice.org/licenses/).
+
 ---
 
 ## Voraussetzungen und Start
@@ -43,25 +50,13 @@ Nutzung für eigene, nicht kommerzielle Zwecke ist gestattet, soweit freigegeben
 
 | Format | Abhängigkeit | Wird mitgeliefert / installiert |
 |--------|--------------|----------------------------------|
-| **DOCX** | `python-docx` (+ `lxml`) | Ja — Python-Paket in `pyproject.toml`, bei `./run.sh` und im App-Bundle |
-| **PDF** (Abrechnung + Belege) | LibreOffice `soffice` + `pypdf` | `pypdf` im Python-Paket; LibreOffice (**MPL-2.0**) wird automatisch mitinstalliert bzw. in die macOS-App gebündelt |
+| **DOCX** | `python-docx` (+ `lxml`) | Ja — Python-Paket |
+| **PDF** | **dxpdf** + `pypdf` | Ja — Python-Paket (~13 MB); kein LibreOffice nötig |
+| PDF (optional) | LibreOffice `soffice` | Fallback, falls installiert (`BKOAB_PDF_ENGINE=libreoffice`) |
 
-LibreOffice darf unter der MPL-2.0 weitergegeben werden. Hinweise: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-- **Lokal (`./run.sh`):** ruft `scripts/ensure_export_deps.sh` auf (macOS: Homebrew-Cask, Linux: apt `libreoffice-writer-nogui`).
-- **macOS-App (`./build_app.sh`):** lädt die offizielle LibreOffice-DMG und legt `LibreOffice.app` unter `BKoAb.app/Contents/Resources/` ab (Überspringen: `BKOAB_SKIP_LIBREOFFICE_BUNDLE=1`).
-- **Docker / Cloudflare-Image:** installiert `libreoffice-writer-nogui` im Dockerfile.
-
-Manuell nachholen:
-
-```bash
-./scripts/ensure_export_deps.sh
-# oder:
-#   brew install --cask libreoffice
-#   sudo apt install libreoffice-writer-nogui
-```
-
-Optional: Pfad überschreiben mit `BKOAB_SOFFICE=/pfad/zu/soffice`.
+- **Lokal / Docker / macOS-App:** PDF über dxpdf — keine separate Installation.
+- **Optional LibreOffice bündeln:** `BKOAB_BUNDLE_LIBREOFFICE=1 ./build_app.sh`
+- Engine erzwingen: `BKOAB_PDF_ENGINE=dxpdf|libreoffice|auto`
 
 ### Erstmalige Installation (einmalig)
 
@@ -69,7 +64,6 @@ Optional: Pfad überschreiben mit `BKOAB_SOFFICE=/pfad/zu/soffice`.
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cd frontend && pnpm install && cd ..
-./scripts/ensure_export_deps.sh   # LibreOffice für PDF-Export
 ```
 
 ### Anwendung starten
@@ -124,7 +118,7 @@ Die App ist dann unter `https://bkoab.<dein-subdomain>.workers.dev` erreichbar.
 ### Hinweise
 
 - **Persistenz:** Der Container-Disk ist derzeit ephemer — bei längerem Idle (`sleepAfter`) können SQLite-Daten und Belege zurückgesetzt werden. Für produktiven Dauerbetrieb folgt später R2/D1.
-- **PDF-Export:** Das Image enthält LibreOffice Writer (nogui) für DOCX→PDF; das Image wird dadurch größer.
+- **PDF-Export:** über dxpdf im Python-Image (kein LibreOffice nötig).
 - Lokal weiter mit `./run.sh` entwickeln.
 
 ---
@@ -328,8 +322,8 @@ Siehe [ROADMAP.md](ROADMAP.md) — u. a. erweiterte Kostenarten, WEG-Logik, Bele
 
 ```bash
 ./build_app.sh
-# Schneller Test ohne LibreOffice-Download (~300 MB):
-#   BKOAB_SKIP_LIBREOFFICE_BUNDLE=1 ./build_app.sh
+# Optionaler LibreOffice-Fallback im Bundle (~420 MB extra):
+#   BKOAB_BUNDLE_LIBREOFFICE=1 ./build_app.sh
 ```
 
-Ergebnis: `dist/BKoAb.dmg` mit gebündeltem LibreOffice für den PDF-Export.
+Ergebnis: schlanke `dist/BKoAb.dmg` mit dxpdf für den PDF-Export (ohne LibreOffice).

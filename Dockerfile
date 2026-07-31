@@ -10,15 +10,9 @@ RUN pnpm build
 FROM python:3.12-slim-bookworm
 WORKDIR /app
 
-# LibreOffice (MPL-2.0) for DOCX→PDF settlement export — see THIRD_PARTY_NOTICES.md
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    libreoffice-writer-nogui \
-  && rm -rf /var/lib/apt/lists/*
-
 COPY pyproject.toml README.md ./
 COPY src ./src
+# dxpdf provides DOCX→PDF (MIT, native wheel) — no LibreOffice in the image
 RUN pip install --no-cache-dir .
 
 COPY --from=frontend /app/frontend/dist ./frontend/dist

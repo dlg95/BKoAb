@@ -73,6 +73,8 @@ echo "PyInstaller …"
   --hidden-import docx \
   --hidden-import lxml \
   --hidden-import pypdf \
+  --hidden-import dxpdf \
+  --collect-all dxpdf \
   app_main.py
 
 rm -f "BKoAb.spec"
@@ -87,17 +89,28 @@ APP="dist/BKoAb.app"
 /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName BKoAb" "$APP/Contents/Info.plist" 2>/dev/null \
   || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string BKoAb" "$APP/Contents/Info.plist"
 
-# Bundle LibreOffice (MPL-2.0) for PDF export — skip with BKOAB_SKIP_LIBREOFFICE_BUNDLE=1
-echo "Bündele LibreOffice für PDF-Export …"
-chmod +x scripts/bundle_libreoffice_macos.sh
+# PDF uses dxpdf (~13 MB) by default. Optional legacy LibreOffice bundle:
+#   BKOAB_BUNDLE_LIBREOFFICE=1 ./build_app.sh
 mkdir -p "$APP/Contents/Resources"
-./scripts/bundle_libreoffice_macos.sh "$APP/Contents/Resources"
-# Ship third-party notice next to the nested LibreOffice.app
 cp THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
+if [[ "${BKOAB_BUNDLE_LIBREOFFICE:-}" == "1" ]]; then
+  echo "Bündele LibreOffice (optionaler PDF-Fallback) …"
+  chmod +x scripts/bundle_libreoffice_macos.sh
+  ./scripts/bundle_libreoffice_macos.sh "$APP/Contents/Resources"
+else
+  echo "LibreOffice-Bundle übersprungen (PDF via dxpdf). Optional: BKOAB_BUNDLE_LIBREOFFICE=1"
+fi
 
 # ── Sign + notarize the app ─────────────────────────────────────────────────
 if [ -n "${BKOAB_SIGN_ID}" ]; then
   echo "Signiere App: $BKOAB_SIGN_ID"
+  # Nested LibreOffice must be signed before the outer bundle (codesign --deep
+  # alone can fail on stripped LO with dangling links / nested app layout).
+  LO_APP="$APP/Contents/Resources/LibreOffice.app"
+  if [ -d "$LO_APP" ]; then
+    find "$LO_APP" -type l ! -exec test -e {} \; -delete
+    codesign --deep --force --options runtime --timestamp --sign "$BKOAB_SIGN_ID" "$LO_APP"
+  fi
   codesign --deep --force --options runtime --timestamp --sign "$BKOAB_SIGN_ID" "$APP"
   codesign --verify --strict "$APP" || { echo "codesign-Verify fehlgeschlagen"; exit 1; }
   if [ -n "${BKOAB_NOTARY_PROFILE}" ]; then
@@ -118,6 +131,7 @@ rm -f "$DMG"
 STAGE="$(mktemp -d)"
 cp -R "$APP" "$STAGE/"
 cp ONBOARDING.txt "$STAGE/LIESMICH-zuerst.txt"
+cp THIRD_PARTY_NOTICES.md "$STAGE/Lizenzhinweise-Drittanbieter.md"
 ln -s /Applications "$STAGE/Programme"
 echo "Baue DMG …"
 hdiutil create -volname "BKoAb" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null

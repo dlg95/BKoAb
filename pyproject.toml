@@ -17,6 +17,7 @@ dependencies = [
     "python-multipart>=0.0.17",
     "python-docx>=1.1.2",
     "pypdf>=5.1.0",
+    "dxpdf>=0.3.1",
 ]
 
 [project.optional-dependencies]

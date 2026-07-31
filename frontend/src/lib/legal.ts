@@ -44,4 +44,13 @@ export const LEGAL_SECTIONS = [
       `© ${COPYRIGHT_YEAR} ${COPYRIGHT_HOLDER}. Alle Rechte vorbehalten, soweit nicht ausdrücklich anders angegeben.`,
     ],
   },
+  {
+    title: "Drittanbieter: PDF-Export (dxpdf / optional LibreOffice)",
+    paragraphs: [
+      "Für die Umwandlung von Abrechnungsdokumenten (DOCX) in PDF nutzt BKoAb primär dxpdf (MIT-Lizenz), eine kompakte native Bibliothek ohne LibreOffice.",
+      "Optional kann LibreOffice (Writer / soffice) als Fallback dienen, falls installiert. LibreOffice ist Freie Software der The Document Foundation unter der Mozilla Public License Version 2.0 (MPL-2.0). Offizielle Lizenzhinweise: https://www.libreoffice.org/licenses/",
+      "dxpdf: https://github.com/nerdy-pro/dxpdf · MPL-2.0-Text: https://mozilla.org/MPL/2.0/ · LibreOffice-Quellen: https://www.libreoffice.org/download/download-libreoffice/",
+      "„LibreOffice“ ist eine Marke von The Document Foundation. Weitere Hinweise: THIRD_PARTY_NOTICES.md im Projekt bzw. im App-Bundle unter Contents/Resources/.",
+    ],
+  },
 ] as const

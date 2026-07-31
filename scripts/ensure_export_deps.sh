@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Ensure LibreOffice (soffice) is available for DOCX→PDF export.
-# Licensing: LibreOffice is MPL-2.0 — redistribution and local install are allowed.
-# See THIRD_PARTY_NOTICES.md.
+# Optional: install LibreOffice as PDF fallback (primary engine is dxpdf).
+# Licensing: LibreOffice is MPL-2.0 — see https://www.libreoffice.org/licenses/
+# and THIRD_PARTY_NOTICES.md.
 set -euo pipefail
 
 soffice_available() {

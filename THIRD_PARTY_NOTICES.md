@@ -1,25 +1,58 @@
-# Third-party notices
+# Drittanbieter- und Lizenzhinweise
 
-## LibreOffice
+Dieses Dokument gehört zu BKoAb. Es beschreibt Software von Dritten, die
+mitgeliefert oder zur Laufzeit genutzt wird.
 
-BKoAb uses **LibreOffice** (`soffice`) to convert settlement DOCX files to PDF
-and may redistribute a LibreOffice macOS application bundle inside `BKoAb.app`
-(and install LibreOffice packages in Docker / local setup scripts).
+## dxpdf (PDF-Export)
 
-- Project: https://www.libreoffice.org/
-- License: **Mozilla Public License 2.0 (MPL-2.0)**
-- License text: https://www.libreoffice.org/about-us/licenses/
-- Source code: https://www.libreoffice.org/download/download-libreoffice/
+**BKoAb verwendet dxpdf** für die Umwandlung von Abrechnungs-DOCX in PDF
+(primärer PDF-Engine, im Python-Paket / App-Bundle).
 
-Redistribution of LibreOffice binaries is permitted under the MPL-2.0.
-Trademark use of the name “LibreOffice” and logos remains subject to
-The Document Foundation’s trademark policy:
-https://www.libreoffice.org/about-us/trademarks/
+- Projekt: https://github.com/nerdy-pro/dxpdf · https://pypi.org/project/dxpdf/
+- Lizenz: **MIT**
+- Typische Größe: ca. 13 MB (natives Wheel), deutlich kleiner als ein
+  LibreOffice-Bundle
 
-## Python packages (DOCX / PDF)
+## LibreOffice (optionaler Fallback)
 
-| Package | Role | License |
-|---------|------|---------|
-| python-docx | Generate settlement DOCX | MIT |
-| pypdf | Merge settlement PDF with invoice PDFs | BSD-3-Clause |
-| lxml | XML support for python-docx | BSD |
+LibreOffice (`soffice` / Writer) kann optional für DOCX→PDF genutzt werden
+(`BKOAB_PDF_ENGINE=libreoffice` oder Fallback, wenn dxpdf fehlschlägt und
+LibreOffice installiert bzw. gebündelt ist). Die macOS-App bündelt LibreOffice
+**nicht** standardmäßig; optional mit `BKOAB_BUNDLE_LIBREOFFICE=1 ./build_app.sh`.
+
+LibreOffice ist Freie Software der [The Document Foundation](https://www.documentfoundation.org/).
+
+### Lizenz
+
+LibreOffice steht unter der **Mozilla Public License Version 2.0 (MPL-2.0)** und
+basiert u. a. auf Code aus Apache OpenOffice (Apache License 2.0); einzelne
+Bestandteile können weiteren Open-Source-Lizenzen unterliegen.
+
+Offizielle Lizenzinformationen:
+
+- **https://www.libreoffice.org/licenses/**
+
+MPL-2.0-Text:
+
+- https://mozilla.org/MPL/2.0/
+
+Quellcode / Downloads:
+
+- https://www.libreoffice.org/download/download-libreoffice/
+
+### Marken
+
+„LibreOffice“ und zugehörige Logos sind Marken von The Document Foundation:
+
+- https://www.libreoffice.org/about-us/trademarks/
+
+BKoAb steht in keiner offiziellen Verbindung zur Document Foundation.
+
+## Python-Pakete (DOCX / PDF)
+
+| Paket | Rolle | Lizenz |
+|-------|-------|--------|
+| python-docx | Erzeugung der Abrechnung als DOCX | MIT |
+| dxpdf | DOCX→PDF (primär) | MIT |
+| pypdf | Zusammenfügen von Abrechnungs-PDF und Beleg-PDFs | BSD-3-Clause |
+| lxml | XML-Unterstützung für python-docx | BSD |

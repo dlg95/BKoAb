@@ -82,6 +82,9 @@ export function Layout() {
               Haftungsausschluss
             </LinkButton>
             <LinkButton variant="link" size="sm" to="/rechtliches" className="h-auto px-0 text-xs">
+              Drittlizenzen
+            </LinkButton>
+            <LinkButton variant="link" size="sm" to="/rechtliches" className="h-auto px-0 text-xs">
               Keine Steuerberatung
             </LinkButton>
           </div>

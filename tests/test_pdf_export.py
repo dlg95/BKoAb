@@ -1,8 +1,9 @@
 from io import BytesIO
 
+from docx import Document
 from pypdf import PdfReader
 
-from bkoab.services.pdf_export import find_soffice, merge_pdf_documents
+from bkoab.services.pdf_export import docx_bytes_to_pdf, find_soffice, merge_pdf_documents
 
 
 def _minimal_pdf(page_label: str = "1") -> bytes:
@@ -45,3 +46,21 @@ def test_merge_pdf_documents_skips_empty_parts():
     merged = merge_pdf_documents([_minimal_pdf("only"), b""])
     reader = PdfReader(BytesIO(merged))
     assert len(reader.pages) == 1
+
+
+def test_docx_bytes_to_pdf_via_dxpdf(monkeypatch):
+    monkeypatch.setenv("BKOAB_PDF_ENGINE", "dxpdf")
+    doc = Document()
+    doc.add_heading("BKoAb PDF-Test", 0)
+    doc.add_paragraph("Umlaut: Größe, Straße, Gebäude.")
+    table = doc.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Position"
+    table.cell(0, 1).text = "Betrag"
+    table.cell(1, 0).text = "Heizung"
+    table.cell(1, 1).text = "12,34 €"
+    buf = BytesIO()
+    doc.save(buf)
+    pdf = docx_bytes_to_pdf(buf.getvalue())
+    assert pdf.startswith(b"%PDF")
+    reader = PdfReader(BytesIO(pdf))
+    assert len(reader.pages) >= 1
