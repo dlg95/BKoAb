@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import {
   BedDouble,
   CalendarRange,
+  Euro,
   DoorOpen,
   Pencil,
   Plus,
@@ -13,6 +14,7 @@ import {
   Users,
 } from "lucide-react"
 
+import { AdvanceRatesDialog } from "@/components/advance-rates-dialog"
 import { BillingYearsCard } from "@/components/billing-years-card"
 import { Callout } from "@/components/callout"
 import { EmptyState } from "@/components/empty-state"
@@ -28,7 +30,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { api, errorMessage, formatDate, type Apartment, type Lease } from "@/lib/api"
+import { api, errorMessage, formatDate, formatEur, type Apartment, type Lease } from "@/lib/api"
 import { formatSqm, parseArea, wgAreaMismatch } from "@/lib/area"
 import { TOP_UNIT_STAMMDATEN } from "@/lib/billing-labels"
 import {
@@ -75,6 +77,7 @@ export function ApartmentDetailPage() {
   })
   const [roomDialog, setRoomDialog] = useState<{ room: Room | null } | null>(null)
   const [periodsLease, setPeriodsLease] = useState<Lease | null>(null)
+  const [ratesLease, setRatesLease] = useState<Lease | null>(null)
   const [newRoomPrompt, setNewRoomPrompt] = useState<{ id: number; name: string } | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -241,6 +244,7 @@ export function ApartmentDetailPage() {
                     }}
                     onEditLease={(lease) => openLeaseDialog({ lease, roomId: lease.room_id })}
                     onEditPersons={(lease) => setPeriodsLease(lease)}
+                    onEditAdvance={(lease) => setRatesLease(lease)}
                     onDeleteLease={(lease) => {
                       if (
                         window.confirm(
@@ -298,6 +302,11 @@ export function ApartmentDetailPage() {
         apartmentId={apartmentId}
         onOpenChange={(open) => !open && setPeriodsLease(null)}
       />
+      <AdvanceRatesDialog
+        lease={ratesLease ? (leases?.find((l) => l.id === ratesLease.id) ?? ratesLease) : null}
+        apartmentId={apartmentId}
+        onOpenChange={(open) => !open && setRatesLease(null)}
+      />
       <GuidedLeaseDialog
         open={newRoomPrompt != null}
         onOpenChange={(open) => !open && setNewRoomPrompt(null)}
@@ -319,6 +328,7 @@ type RoomCardProps = {
   onDeleteRoom: () => void
   onEditLease: (lease: Lease) => void
   onEditPersons: (lease: Lease) => void
+  onEditAdvance: (lease: Lease) => void
   onDeleteLease: (lease: Lease) => void
 }
 
@@ -332,6 +342,7 @@ function RoomCard({
   onDeleteRoom,
   onEditLease,
   onEditPersons,
+  onEditAdvance,
   onDeleteLease,
 }: RoomCardProps) {
   const current = leases.find((l) => leaseStatus(l, today) === "current")
@@ -376,6 +387,7 @@ function RoomCard({
                 today={today}
                 onEdit={() => onEditLease(lease)}
                 onEditPersons={() => onEditPersons(lease)}
+                onEditAdvance={() => onEditAdvance(lease)}
                 onDelete={() => onDeleteLease(lease)}
               />
             ))}
@@ -395,12 +407,14 @@ function LeaseRow({
   today,
   onEdit,
   onEditPersons,
+  onEditAdvance,
   onDelete,
 }: {
   lease: Lease
   today: string
   onEdit: () => void
   onEditPersons: () => void
+  onEditAdvance: () => void
   onDelete: () => void
 }) {
   const status = leaseStatus(lease, today)
@@ -429,15 +443,26 @@ function LeaseRow({
             {personsLabel(persons)}
             {changes ? " (wechselnd)" : ""}
           </span>
+          {status !== "past" ? (
+            <span className="inline-flex items-center gap-1">
+              <Euro className="size-3" />
+              {lease.current_advance_payment != null
+                ? `${formatEur(lease.current_advance_payment)}/Monat`
+                : "keine Soll-Vorauszahlung"}
+            </span>
+          ) : null}
           {lease.tenant_contact ? <span className="truncate">{lease.tenant_contact}</span> : null}
         </p>
       </div>
-      <div className="flex gap-1">
+      <div className="flex flex-wrap gap-1">
         <Button variant="outline" size="xs" onClick={onEdit}>
           Bearbeiten
         </Button>
         <Button variant="outline" size="xs" onClick={onEditPersons}>
           Personenzahl
+        </Button>
+        <Button variant="outline" size="xs" onClick={onEditAdvance}>
+          Vorauszahlung
         </Button>
         <Button variant="ghost" size="icon-xs" onClick={onDelete} aria-label={`${lease.tenant_name} löschen`}>
           <Trash2 />

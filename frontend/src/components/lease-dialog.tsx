@@ -34,6 +34,7 @@ type LeaseForm = {
   persons: string
   move_in: string
   move_out: string
+  advance: string
 }
 
 function initialForm(lease: Lease | null | undefined, defaultRoomId: number | null | undefined, rooms: Apartment["rooms"]): LeaseForm {
@@ -45,6 +46,7 @@ function initialForm(lease: Lease | null | undefined, defaultRoomId: number | nu
       persons: String(lease.persons),
       move_in: lease.move_in,
       move_out: lease.move_out ?? "",
+      advance: "",
     }
   }
   const roomId = defaultRoomId ?? (rooms.length === 1 ? rooms[0].id : null)
@@ -55,6 +57,7 @@ function initialForm(lease: Lease | null | undefined, defaultRoomId: number | nu
     persons: "1",
     move_in: "",
     move_out: "",
+    advance: "",
   }
 }
 
@@ -97,6 +100,7 @@ function LeaseDialogBody({ apartmentId, rooms, onOpenChange, lease, defaultRoomI
         persons: Number(form.persons),
         move_in: form.move_in,
         move_out: form.move_out || null,
+        advance_payment_monthly: form.advance || null,
       })
     },
     onSuccess: () => {
@@ -200,6 +204,24 @@ function LeaseDialogBody({ apartmentId, rooms, onOpenChange, lease, defaultRoomI
             onChange={(e) => setForm({ ...form, move_out: e.target.value })}
           />
         </div>
+
+        {!isEdit ? (
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="lease-advance">NK-Vorauszahlung pro Monat in € (optional)</Label>
+            <Input
+              id="lease-advance"
+              type="number"
+              step="0.01"
+              min={0}
+              value={form.advance}
+              onChange={(e) => setForm({ ...form, advance: e.target.value })}
+              placeholder="z. B. 80"
+            />
+            <p className="text-xs text-muted-foreground">
+              Gilt ab Einzug als Soll für alle Monate; Abweichungen tragen Sie in der Abrechnung ein.
+            </p>
+          </div>
+        ) : null}
 
         <div className="space-y-3 sm:col-span-2">
           {multiplePeriods ? (

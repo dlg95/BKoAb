@@ -18,6 +18,8 @@ data/letterheads/
 data/invoices/
 # Automatic safety copies created by „Daten importieren“ (dev mode: next to data/)
 BKoAb-backup-before-import-*/
+# Automatic backups (dev mode: next to data/)
+BKoAb-Sicherungen/
 
 node_modules/
 frontend/dist/

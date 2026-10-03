@@ -186,6 +186,25 @@ def _add_cost_lines_table(doc: Document, *, party: PartySettlement) -> None:
         )
 
 
+def advance_suggestion_text(party: PartySettlement) -> str | None:
+    """Proposal for the future monthly advance — only for tenants who still live in the WG."""
+    if not party.is_current_tenant or party.suggested_advance_payment is None:
+        return None
+    suggested = party.suggested_advance_payment
+    current = party.current_advance_payment
+    if current is not None and abs(suggested - current) < 1:
+        return (
+            f"Ihre bisherige monatliche Betriebskostenvorauszahlung von {format_eur(current)} "
+            "deckt die Kosten dieses Abrechnungsjahres und kann unverändert bleiben."
+        )
+    basis = f" (bisher {format_eur(current)})" if current is not None else ""
+    return (
+        "Auf Grundlage dieser Abrechnung schlagen wir eine monatliche Betriebskostenvorauszahlung "
+        f"von {format_eur(suggested)}{basis} vor (Ihre Kosten je bewohntem Monat, aufgerundet). "
+        "Eine Anpassung ist nach § 560 Abs. 4 BGB im Anschluss an die Abrechnung möglich."
+    )
+
+
 def generate_settlement_docx(
     *,
     preview: SettlementPreview,
@@ -203,6 +222,7 @@ def generate_settlement_docx(
     payment_text_template: str,
     logo_path: str | None = None,
     person_period_lines: list[PersonPeriodLine] | None = None,
+    include_advance_suggestion: bool = True,
 ) -> Document:
     doc = Document()
     section = doc.sections[0]
@@ -268,6 +288,12 @@ def generate_settlement_docx(
         else "Ausgleich"
     )
     add_money_paragraph(doc, balance_label, abs(party.balance), bold=True, size=11)
+
+    suggestion = advance_suggestion_text(party) if include_advance_suggestion else None
+    if suggestion:
+        doc.add_paragraph()
+        add_styled_paragraph(doc, "Künftige Vorauszahlung", bold=True, size=10)
+        add_styled_paragraph(doc, suggestion, size=10)
 
     doc.add_paragraph()
     payment_text = payment_text_template.strip() or _default_payment_text(

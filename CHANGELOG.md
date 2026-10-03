@@ -19,6 +19,26 @@ die Versionierung folgt [Semantic Versioning 2.0.0](https://semver.org/lang/de/)
 
 ### Added
 
+- **Soll-Vorauszahlung je Mietpartei** („Vorauszahlung“ an der Mietpartei bzw. beim Anlegen):
+  Monatsbetrag ab einem Monat, mit Änderungen über die Zeit. Er gilt automatisch für alle
+  bewohnten Monate; in der Abrechnung trägt man nur noch Abweichungen ein (grau = Soll,
+  hervorgehoben = eigene Eingabe, leeres Feld = wieder Soll, „Abweichungen zurücksetzen“).
+- **Vorschlag zur künftigen Vorauszahlung** in Vorschau und DOCX/PDF — nur für Mietparteien,
+  die noch in der WG wohnen: Kosten je bewohntem Monat, auf volle Euro aufgerundet, mit Vergleich
+  zum bisherigen Soll. Beim Export abschaltbar.
+- **Prüfung vor dem Versand** in „Vorschau & Export“: Fehler, Hinweise und Infos (z. B. fehlende
+  Rechnungen oder Vorauszahlungen, mögliche Doppelerfassung, Rechnung außerhalb des Jahres,
+  fehlende Zimmerflächen bei m²-Verteilung, Vermieteranteil durch Leerstand, unvollständiger
+  Briefkopf, Abrechnungsfrist) mit Sprung zur betroffenen Stelle; Export bei Fehlern nur nach
+  Rückfrage.
+- **Abrechnungsfrist** (§ 556 Abs. 3 BGB, 31.12. des Folgejahres) auf dem Dashboard und in der
+  Abrechnung: Hinweis ab 90 Tagen vor Fristende, „erstellt“ sobald ein DOCX/PDF exportiert wurde.
+- **Alle Abrechnungen eines Jahres als ZIP** (DOCX, PDF oder beides).
+- **Automatische Sicherung** beim Start, alle 7 Tage und beim Beenden (nur bei Änderungen), die
+  letzten 10 bleiben erhalten; Liste unter Einstellungen mit „Jetzt sichern“, Herunterladen und
+  Wiederherstellen. Steuerbar über `BKOAB_BACKUP_DIR`, `BKOAB_AUTO_BACKUP_DAYS` (0 = aus),
+  `BKOAB_AUTO_BACKUP_KEEP`.
+
 - Mietparteien **bearbeiten**: Name, Kontakt, Zimmer, Einzug und Auszug (inkl. Auszug
   nachtragen oder wieder entfernen). Personenzahl-Zeiträume werden dabei automatisch an Ein-
   und Auszug angepasst.
@@ -50,6 +70,12 @@ die Versionierung folgt [Semantic Versioning 2.0.0](https://semver.org/lang/de/)
 
 ### Fixed
 
+- **Vorauszahlungen wurden ohne Jahr gespeichert**: Ein Eintrag für z. B. Januar galt für den
+  Januar *jedes* Abrechnungsjahres, Änderungen in 2025 überschrieben also 2024. Sie werden jetzt
+  je Abrechnungsjahr gespeichert. Bestehende Einträge werden bei der Migration in jedes vorhandene
+  Abrechnungsjahr übernommen, in dem die Mietpartei den Monat bewohnt hat — bisherige
+  Abrechnungsergebnisse bleiben unverändert.
+
 - **Import alter Datensicherungen**: Nach dem Import eines Backups aus einer frühen Version
   schlug die Abrechnungsvorschau bis zum Neustart der App fehl (Spalte für Direktzuordnung ging
   bei der Migration verloren). Alte Backups sind jetzt sofort nutzbar; ein Test mit einem
@@ -70,8 +96,11 @@ die Versionierung folgt [Semantic Versioning 2.0.0](https://semver.org/lang/de/)
   überschreiben; sie laufen jetzt in einem temporären Verzeichnis.
 - Lint-Fehler im Frontend behoben (`pnpm lint` läuft wieder fehlerfrei).
 
-Datenbankschema und Datenexport-Format (`bkoab-data-export`, Version 1) sind **unverändert**;
-bestehende Backups lassen sich weiterhin importieren.
+**Datenbankschema & Datenexport:** Vorauszahlungen haben jetzt eine Jahresspalte, neu ist die
+Tabelle `advance_payment_rates`. Die Migration läuft automatisch beim Start und beim Import.
+Das Exportformat steigt auf **Version 2**: Backups der Version 1 (alle bisherigen) werden
+weiterhin importiert und migriert; ältere App-Versionen lehnen Version-2-Backups ab, statt sie
+falsch zu lesen.
 
 ## [0.1.0] - 2026-07-31
 

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Download, Upload } from "lucide-react"
 import { useRef, useState } from "react"
 
+import { AutoBackupCard } from "@/components/auto-backup-card"
 import { Callout } from "@/components/callout"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -78,6 +79,8 @@ export function SettingsPage() {
       ) : (
         <LandlordCard key={landlord?.id ?? "new"} landlord={landlord} />
       )}
+
+      <AutoBackupCard />
 
       <Card>
         <CardHeader>

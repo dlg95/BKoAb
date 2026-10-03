@@ -69,7 +69,12 @@ export type Lease = {
     valid_to: string | null
     persons: number
   }[]
+  /** Planned monthly advance payments (Soll), each valid from a month onwards. */
+  advance_rates: AdvanceRate[]
+  current_advance_payment: string | null
 }
+
+export type AdvanceRate = { valid_from: string; amount: string }
 
 export type Invoice = {
   id: number
@@ -96,7 +101,30 @@ export type AdvancePaymentRow = {
   room_name: string
   months: Record<string, string>
   occupied_months: number[]
+  /** Planned rate per occupied month (null = no Soll defined). */
+  planned: Record<string, string | null>
+  /** Months with an own entry (deviation from the Soll). */
+  overridden_months: number[]
 }
+
+export type PlausibilityCheck = {
+  severity: "error" | "warning" | "info"
+  area: "rechnungen" | "vorauszahlungen" | "mietparteien" | "stammdaten" | "einstellungen" | "verteilung" | "frist"
+  message: string
+}
+
+export type Deadline = {
+  year: number
+  deadline: string
+  days_left: number
+  state: "exported" | "open" | "due_soon" | "missing" | "overdue"
+  billing_year_exists: boolean
+  exported_at: string | null
+}
+
+export type BackupItem = { filename: string; created_at: string; size_bytes: number; reason: string }
+
+export type ExportFormat = "docx" | "pdf" | "both"
 
 export type PartySettlement = {
   lease_id: number
@@ -118,6 +146,9 @@ export type PartySettlement = {
   total_advance_payments: string
   balance: string
   balance_type: string
+  is_current_tenant: boolean
+  current_advance_payment: string | null
+  suggested_advance_payment: string | null
 }
 
 export type SettlementPreview = {
@@ -129,6 +160,7 @@ export type SettlementPreview = {
   unit_area_sqm: string | null
   parties: PartySettlement[]
   warnings: string[]
+  checks: PlausibilityCheck[]
 }
 
 export type LandlordProfile = {
@@ -166,6 +198,7 @@ export const api = {
         active_lease_count: number
         billing_years: number[]
         total_area_sqm: string | null
+        deadlines: Deadline[]
       }[]
       landlord: LandlordProfile | null
     }>("/dashboard"),
@@ -205,6 +238,11 @@ export const api = {
       move_out?: string | null
     },
   ) => request<Lease>(`/leases/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  updateAdvanceRates: (leaseId: number, rates: AdvanceRate[]) =>
+    request<AdvanceRate[]>(`/leases/${leaseId}/advance-rates`, {
+      method: "PUT",
+      body: JSON.stringify({ rates }),
+    }),
   deleteLease: (id: number) => request<void>(`/leases/${id}`, { method: "DELETE" }),
   updatePersonPeriods: (leaseId: number, periods: object[]) =>
     request<Lease["person_periods"]>(`/leases/${leaseId}/person-periods`, {
@@ -269,9 +307,10 @@ export const api = {
     leaseId: number,
     tenantName: string,
     roomName: string,
+    includeAdvanceSuggestion = true,
   ) =>
     fetchExport(
-      `${API_BASE}/apartments/${apartmentId}/billing-years/${year}/export/${leaseId}`,
+      `${API_BASE}/apartments/${apartmentId}/billing-years/${year}/export/${leaseId}?include_advance_suggestion=${includeAdvanceSuggestion}`,
       `Abrechnung_${year}_${tenantName}_${roomName}.docx`,
     ),
   exportPartyPdf: (
@@ -280,10 +319,25 @@ export const api = {
     leaseId: number,
     tenantName: string,
     roomName: string,
+    includeAdvanceSuggestion = true,
   ) =>
     fetchExport(
-      `${API_BASE}/apartments/${apartmentId}/billing-years/${year}/export/${leaseId}/pdf`,
+      `${API_BASE}/apartments/${apartmentId}/billing-years/${year}/export/${leaseId}/pdf?include_advance_suggestion=${includeAdvanceSuggestion}`,
       `Abrechnung_${year}_${tenantName}_${roomName}.pdf`,
+    ),
+  exportAllZip: (apartmentId: number, year: number, format: ExportFormat, includeAdvanceSuggestion = true) =>
+    fetchExport(
+      `${API_BASE}/apartments/${apartmentId}/billing-years/${year}/export-zip?format=${format}&include_advance_suggestion=${includeAdvanceSuggestion}`,
+      `Abrechnungen_${year}.zip`,
+    ),
+  backups: () =>
+    request<{ directory: string; interval_days: number; keep: number; items: BackupItem[] }>("/backups"),
+  createBackup: () => request<BackupItem>("/backups", { method: "POST" }),
+  backupDownloadUrl: (filename: string) => `${API_BASE}/backups/${encodeURIComponent(filename)}`,
+  restoreBackup: (filename: string) =>
+    request<{ ok: boolean; imported_files: number; backup_path: string | null }>(
+      `/backups/${encodeURIComponent(filename)}/restore`,
+      { method: "POST" },
     ),
   landlord: () => request<LandlordProfile | null>("/landlord-profile"),
   updateLandlord: (data: object) =>

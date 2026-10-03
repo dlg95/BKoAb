@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from bkoab.database import get_db
 from bkoab.models import Apartment, BillingYear, LandlordProfile, Lease, Property, PropertyBillingYear, PropertyType, Room, Tenant
 from bkoab.schemas import (
+    DeadlineRead,
     ApartmentCreate,
     ApartmentRead,
     ApartmentUpdate,
@@ -20,6 +21,7 @@ from bkoab.schemas import (
 
 
 from bkoab.services.apartment_context import apartment_billing_kind, is_wg_apartment
+from bkoab.services.deadlines import apartment_deadlines
 
 
 def _property_kind(prop: Property, unit_count: int) -> str:
@@ -135,6 +137,17 @@ def get_dashboard(db: Session = Depends(get_db)):
                     active_lease_count=active_leases,
                     billing_years=sorted(years, reverse=True),
                     total_area_sqm=prop.total_area_sqm,
+                    deadlines=[
+                        DeadlineRead.model_validate(info)
+                        for info in apartment_deadlines(
+                            apt,
+                            db.query(Lease).join(Room).filter(Room.apartment_id == apt.id).all(),
+                            years,
+                            today,
+                        )
+                    ]
+                    if apt
+                    else [],
                 )
             )
         else:

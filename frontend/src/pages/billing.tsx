@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { FolderOpen, Loader2, ReceiptText } from "lucide-react"
-import { useParams } from "react-router-dom"
+import { FileArchive, FolderOpen, Loader2, ReceiptText } from "lucide-react"
+import { useNavigate, useParams } from "react-router-dom"
 import { useState } from "react"
 
 import { BillingYearsCard } from "@/components/billing-years-card"
@@ -8,6 +8,7 @@ import { Callout } from "@/components/callout"
 import { EmptyState } from "@/components/empty-state"
 import { LinkButton } from "@/components/link-button"
 import { PageHeader } from "@/components/page-header"
+import { PlausibilityPanel } from "@/components/plausibility-panel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,9 +18,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { api, DEFAULT_ALLOCATION_KEY, errorMessage, formatDate, formatEur, MONTHS } from "@/lib/api"
+import {
+  api,
+  DEFAULT_ALLOCATION_KEY,
+  errorMessage,
+  formatDate,
+  formatEur,
+  MONTHS,
+  type ExportFormat,
+  type PlausibilityCheck,
+} from "@/lib/api"
 import { ALLOCATION_ITEMS, ALLOCATION_KEYS } from "@/lib/billing-labels"
-import { pickExportDirectory, saveDocxBlob, savePdfBlob } from "@/lib/download"
+import { pickExportDirectory, saveDocxBlob, saveExportBlob, savePdfBlob } from "@/lib/download"
 import { abbreviateTenantName } from "@/lib/utils"
 
 const INVOICE_TYPES = [
@@ -83,6 +93,7 @@ function BillingPage() {
   const apartmentId = Number(id)
   const billingYear = Number(year)
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
 
   const { data: billingYears } = useQuery({
     queryKey: ["billing-years", apartmentId],
@@ -138,6 +149,9 @@ function BillingPage() {
   const [exportingLeaseId, setExportingLeaseId] = useState<number | null>(null)
   const [exportingFormat, setExportingFormat] = useState<"docx" | "pdf" | null>(null)
   const [exportStatus, setExportStatus] = useState<string | null>(null)
+  const [includeSuggestion, setIncludeSuggestion] = useState(true)
+  const [zipFormat, setZipFormat] = useState<ExportFormat>("both")
+  const [zipExporting, setZipExporting] = useState(false)
 
   const direktzuordnungIncomplete =
     invoiceForm.allocation_key === "direktzuordnung" && invoiceForm.target_lease_ids.length === 0
@@ -219,7 +233,8 @@ function BillingPage() {
       const payments = Object.entries(advanceDraft)
         .map(([key, amount]) => {
           const [leaseId, month] = key.split("-")
-          return { lease_id: Number(leaseId), month: Number(month), amount: amount || "0" }
+          // Empty cell = no own entry → the Soll of the Mietpartei applies again.
+          return { lease_id: Number(leaseId), month: Number(month), amount: amount === "" ? null : amount }
         })
         .filter(({ lease_id, month }) => {
           const row = advanceRows?.find((r) => r.lease_id === lease_id)
@@ -230,6 +245,7 @@ function BillingPage() {
     onSuccess: () => {
       setAdvanceDraft({})
       setAdvanceSaved(true)
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
       queryClient.invalidateQueries({ queryKey: ["advance", apartmentId, billingYear] })
       queryClient.invalidateQueries({ queryKey: ["preview", apartmentId, billingYear] })
     },
@@ -243,15 +259,24 @@ function BillingPage() {
     setExportStatus(`Zielordner: ${handle.name}`)
   }
 
+  function confirmExportDespiteErrors() {
+    const errors = preview?.checks.filter((c) => c.severity === "error") ?? []
+    if (!errors.length) return true
+    return window.confirm(
+      `Die Prüfung hat ${errors.length} Fehler gefunden:\n\n${errors.map((e) => `• ${e.message}`).join("\n")}\n\nTrotzdem exportieren?`,
+    )
+  }
+
   async function exportParty(leaseId: number, tenantName: string, roomName: string, format: "docx" | "pdf") {
+    if (!confirmExportDespiteErrors()) return
     setExportingLeaseId(leaseId)
     setExportingFormat(format)
     setExportStatus(`${format.toUpperCase()} wird erstellt für ${tenantName} (${roomName})…`)
     try {
       const { blob, filename } =
         format === "pdf"
-          ? await api.exportPartyPdf(apartmentId, billingYear, leaseId, tenantName, roomName)
-          : await api.exportPartyDocx(apartmentId, billingYear, leaseId, tenantName, roomName)
+          ? await api.exportPartyPdf(apartmentId, billingYear, leaseId, tenantName, roomName, includeSuggestion)
+          : await api.exportPartyDocx(apartmentId, billingYear, leaseId, tenantName, roomName, includeSuggestion)
       const save = format === "pdf" ? savePdfBlob : saveDocxBlob
       const result = await save(blob, filename, exportDirHandle)
       if (result === "cancelled") {
@@ -268,14 +293,58 @@ function BillingPage() {
     } finally {
       setExportingLeaseId(null)
       setExportingFormat(null)
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
     }
   }
+
+  async function exportAllZip() {
+    if (!confirmExportDespiteErrors()) return
+    setZipExporting(true)
+    setExportStatus("ZIP mit allen Abrechnungen wird erstellt…")
+    try {
+      const { blob, filename } = await api.exportAllZip(apartmentId, billingYear, zipFormat, includeSuggestion)
+      const result = await saveExportBlob(blob, filename, exportDirHandle, "application/zip", "ZIP-Archiv", ".zip")
+      setExportStatus(result === "cancelled" ? "Speichern abgebrochen." : `${filename} gespeichert.`)
+    } catch (error) {
+      setExportStatus(errorMessage(error, "Export fehlgeschlagen."))
+    } finally {
+      setZipExporting(false)
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    }
+  }
+
+  function navigateToCheck(area: PlausibilityCheck["area"]) {
+    if (area === "rechnungen" || area === "vorauszahlungen") setTab(area)
+    else if (area === "mietparteien") navigate(`/wohnungen/${apartmentId}`)
+    else if (area === "stammdaten") navigate(`/wohnungen/${apartmentId}`)
+    else if (area === "einstellungen") navigate("/einstellungen")
+  }
+
+  function resetOverrides() {
+    if (!advanceRows) return
+    const draft: Record<string, string> = { ...advanceDraft }
+    for (const row of advanceRows) {
+      for (const month of row.overridden_months) draft[`${row.lease_id}-${month}`] = ""
+    }
+    setAdvanceDraft(draft)
+    setAdvanceSaved(false)
+  }
+
+  const checkProblems = preview?.checks.filter((c) => c.severity !== "info").length ?? 0
 
   function getAdvanceValue(leaseId: number, month: number) {
     const key = `${leaseId}-${month}`
     if (key in advanceDraft) return advanceDraft[key]
     const row = advanceRows?.find((r) => r.lease_id === leaseId)
-    return row?.months[month] ?? row?.months[String(month)] ?? "0"
+    // Months without own entry stay empty and show the Soll as placeholder.
+    if (!row?.overridden_months.includes(month)) return ""
+    return row.months[String(month)] ?? ""
+  }
+
+  function plannedLabel(row: { planned: Record<string, string | null> }) {
+    const values = [...new Set(Object.values(row.planned).filter((v): v is string => v != null))]
+    if (!values.length) return "—"
+    return values.map((v) => formatEur(v)).join(" → ")
   }
 
   function fillUniform(amount: string) {
@@ -303,7 +372,7 @@ function BillingPage() {
           { label: `Abrechnung ${billingYear}` },
         ]}
         title={`Abrechnung ${billingYear}`}
-        description={`${apartment?.name ?? ""} · Abrechnungszeitraum 01.01.${billingYear} – 31.12.${billingYear}`}
+        description={`${apartment?.name ?? ""} · Abrechnungszeitraum 01.01.${billingYear} – 31.12.${billingYear} · Frist für die Zustellung: 31.12.${billingYear + 1}`}
         actions={
           billingYears && billingYears.length > 1 ? (
             <div className="flex flex-wrap gap-1 rounded-full bg-muted p-1">
@@ -329,7 +398,14 @@ function BillingPage() {
         <TabsList className="max-w-full justify-start overflow-x-auto">
           <TabsTrigger value="rechnungen">1 · Rechnungen</TabsTrigger>
           <TabsTrigger value="vorauszahlungen">2 · Vorauszahlungen</TabsTrigger>
-          <TabsTrigger value="vorschau">3 · Vorschau & Export</TabsTrigger>
+          <TabsTrigger value="vorschau">
+            3 · Vorschau & Export
+            {checkProblems > 0 ? (
+              <span className="ml-1 rounded-full bg-amber-500/20 px-1.5 text-xs text-amber-800 dark:text-amber-200">
+                {checkProblems}
+              </span>
+            ) : null}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="rechnungen" className="space-y-4">
@@ -568,7 +644,10 @@ function BillingPage() {
           <Card>
             <CardHeader>
               <CardTitle>Vorauszahlungen pro Mietpartei</CardTitle>
-              <CardDescription>Manuelle Eingabe vor der Abrechnungserstellung</CardDescription>
+              <CardDescription>
+                Grau = Soll-Vorauszahlung der Mietpartei (auf der WG-Seite unter „Vorauszahlung“
+                hinterlegt). Nur abweichende Zahlungen eintragen; ein geleertes Feld gilt wieder als Soll.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
@@ -583,6 +662,11 @@ function BillingPage() {
                 <Button variant="secondary" onClick={() => fillUniform(uniformAmount || "0")}>
                   Für alle bewohnten Monate übernehmen
                 </Button>
+                {advanceRows?.some((r) => r.overridden_months.length > 0) ? (
+                  <Button variant="ghost" onClick={resetOverrides}>
+                    Abweichungen zurücksetzen
+                  </Button>
+                ) : null}
                 <Button
                   onClick={() => saveAdvance.mutate()}
                   disabled={saveAdvance.isPending || Object.keys(advanceDraft).length === 0}
@@ -610,6 +694,7 @@ function BillingPage() {
                     <TableRow>
                       <TableHead className="w-44 whitespace-nowrap">Mieter</TableHead>
                       <TableHead className="w-36 whitespace-nowrap">Zimmer</TableHead>
+                      <TableHead className="w-28 whitespace-nowrap">Soll/Monat</TableHead>
                       {MONTHS.map((m) => <TableHead key={m} className="w-20 whitespace-nowrap">{m}</TableHead>)}
                     </TableRow>
                   </TableHeader>
@@ -625,13 +710,24 @@ function BillingPage() {
                         <TableCell className="overflow-visible whitespace-nowrap">
                           {row.room_name}
                         </TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">{plannedLabel(row)}</TableCell>
                         {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
                           <TableCell key={month} className="w-20 p-1">
                             {isOccupiedMonth(row, month) ? (
                               <Input
-                                className="w-20"
+                                className={
+                                  getAdvanceValue(row.lease_id, month) !== ""
+                                    ? "w-20 bg-primary/10 font-medium"
+                                    : "w-20"
+                                }
                                 type="number"
                                 step="0.01"
+                                placeholder={row.planned[String(month)] ?? "0"}
+                                title={
+                                  row.planned[String(month)] != null
+                                    ? `Soll: ${formatEur(row.planned[String(month)]!)}`
+                                    : "Keine Soll-Vorauszahlung"
+                                }
                                 value={getAdvanceValue(row.lease_id, month)}
                                 onChange={(e) => {
                                   setAdvanceSaved(false)
@@ -662,8 +758,38 @@ function BillingPage() {
               <FolderOpen className="size-4" />
               Zielordner wählen
             </Button>
+            <div className="flex items-center gap-1 rounded-full bg-muted p-1">
+              <select
+                aria-label="Format für ZIP-Export"
+                className="h-7 rounded-full bg-transparent px-2 text-sm outline-none"
+                value={zipFormat}
+                onChange={(e) => setZipFormat(e.target.value as ExportFormat)}
+              >
+                <option value="both">DOCX + PDF</option>
+                <option value="docx">nur DOCX</option>
+                <option value="pdf">nur PDF</option>
+              </select>
+              <Button
+                size="sm"
+                onClick={() => exportAllZip()}
+                disabled={zipExporting || exportingLeaseId !== null || !preview?.parties.length}
+              >
+                {zipExporting ? <Loader2 className="size-4 animate-spin" /> : <FileArchive className="size-4" />}
+                Alle als ZIP
+              </Button>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={includeSuggestion}
+                onChange={(e) => setIncludeSuggestion(e.target.checked)}
+              />
+              Vorschlag zur künftigen Vorauszahlung aufnehmen
+            </label>
+          </div>
+          <div className="text-sm text-muted-foreground">
             {exportDirName ? (
-              <span className="text-sm text-muted-foreground">Speicherort: {exportDirName}</span>
+              <span>Speicherort: {exportDirName}</span>
             ) : (
               <span className="text-sm text-muted-foreground">
                 Ohne Zielordner öffnet sich beim Export der Speichern-Dialog. PDF-Export hängt hochgeladene Rechnungs-PDFs an.
@@ -684,11 +810,7 @@ function BillingPage() {
             <Callout variant="error">{errorMessage(previewError, "Vorschau konnte nicht berechnet werden.")}</Callout>
           ) : null}
 
-          {preview?.warnings?.length ? (
-            <Callout variant="warning" title="Bitte prüfen">
-              {preview.warnings.map((w) => <p key={w}>{w}</p>)}
-            </Callout>
-          ) : null}
+          {preview ? <PlausibilityPanel checks={preview.checks} onNavigate={navigateToCheck} /> : null}
 
           {preview && preview.parties.length === 0 ? (
             <Callout variant="warning">
@@ -739,7 +861,19 @@ function BillingPage() {
                 </div>
                 <CardDescription>
                   Personenmonate: {parseFloat(party.head_months).toLocaleString("de-DE", { maximumFractionDigits: 2 })}
+                  {party.is_current_tenant ? "" : " · ausgezogen (kein Vorschlag zur Vorauszahlung)"}
                 </CardDescription>
+                {party.is_current_tenant && party.suggested_advance_payment ? (
+                  <p className="text-sm">
+                    <span className="text-muted-foreground">Vorschlag künftige Vorauszahlung: </span>
+                    <span className="font-medium">{formatEur(party.suggested_advance_payment)}/Monat</span>
+                    <span className="text-muted-foreground">
+                      {party.current_advance_payment != null
+                        ? ` (bisher ${formatEur(party.current_advance_payment)})`
+                        : " (bisher kein Soll hinterlegt)"}
+                    </span>
+                  </p>
+                ) : null}
               </CardHeader>
               <CardContent>
                 <Table>

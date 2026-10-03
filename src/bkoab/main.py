@@ -1,4 +1,5 @@
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 import os
 import signal
 import threading
@@ -7,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from bkoab.api.backups import router as backups_router
 from bkoab.api.billing import router as billing_router
 from bkoab.api.dashboard import router as dashboard_router
 from bkoab.api.data_export import router as data_export_router
@@ -15,6 +17,15 @@ from bkoab.api.properties import router as properties_router
 from bkoab.config import BASE_DIR
 from bkoab import database
 from bkoab.models import LandlordProfile
+from bkoab.services.auto_backup import maybe_auto_backup
+
+AUTO_BACKUP_CHECK_SECONDS = 6 * 60 * 60
+
+
+async def _auto_backup_loop() -> None:
+    while True:
+        await asyncio.sleep(AUTO_BACKUP_CHECK_SECONDS)
+        await asyncio.to_thread(maybe_auto_backup, "auto")
 
 
 @asynccontextmanager
@@ -36,7 +47,16 @@ async def lifespan(app: FastAPI):
             db.commit()
     finally:
         db.close()
-    yield
+
+    await asyncio.to_thread(maybe_auto_backup, "start")
+    backup_task = asyncio.create_task(_auto_backup_loop())
+    try:
+        yield
+    finally:
+        backup_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await backup_task
+        await asyncio.to_thread(maybe_auto_backup, "beenden", on_quit=True)
 
 
 app = FastAPI(title="BKoAb", version="0.1.0", lifespan=lifespan)
@@ -60,6 +80,7 @@ app.include_router(leases_router)
 app.include_router(billing_router)
 app.include_router(properties_router)
 app.include_router(data_export_router)
+app.include_router(backups_router)
 
 
 @app.get("/health")
@@ -74,6 +95,7 @@ def shutdown():
     def _kill() -> None:
         os.kill(os.getpid(), signal.SIGTERM)
 
+    maybe_auto_backup("beenden", on_quit=True)
     threading.Timer(0.4, _kill).start()
     return {"ok": True}
 

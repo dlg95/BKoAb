@@ -166,6 +166,9 @@ class Lease(Base):
     advance_payments: Mapped[list["AdvancePayment"]] = relationship(
         back_populates="lease", cascade="all, delete-orphan"
     )
+    advance_rates: Mapped[list["AdvancePaymentRate"]] = relationship(
+        back_populates="lease", cascade="all, delete-orphan", order_by="AdvancePaymentRate.valid_from"
+    )
 
 
 class LeasePersonPeriod(Base):
@@ -249,12 +252,31 @@ class Invoice(Base):
 
 
 class AdvancePayment(Base):
+    """Actual/deviating advance payment for one month of one billing year.
+
+    Months without a row fall back to the planned rate (`AdvancePaymentRate`).
+    """
+
     __tablename__ = "advance_payments"
-    __table_args__ = (UniqueConstraint("lease_id", "month", name="uq_lease_month"),)
+    __table_args__ = (UniqueConstraint("lease_id", "year", "month", name="uq_lease_year_month"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     lease_id: Mapped[int] = mapped_column(ForeignKey("leases.id", ondelete="CASCADE"))
+    year: Mapped[int] = mapped_column(Integer)
     month: Mapped[int] = mapped_column(Integer)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
 
     lease: Mapped["Lease"] = relationship(back_populates="advance_payments")
+
+
+class AdvancePaymentRate(Base):
+    """Planned monthly advance payment (Soll) of a lease, valid from a month onwards."""
+
+    __tablename__ = "advance_payment_rates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lease_id: Mapped[int] = mapped_column(ForeignKey("leases.id", ondelete="CASCADE"))
+    valid_from: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+
+    lease: Mapped["Lease"] = relationship(back_populates="advance_rates")

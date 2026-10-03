@@ -93,6 +93,7 @@ def run_migrations(engine: Engine) -> None:
                 conn.execute(text("ALTER TABLE apartments ADD COLUMN consumption_amount NUMERIC(12, 4)"))
 
         _backfill_properties(conn, engine)
+        _migrate_advance_payments_per_year(conn, engine)
 
 
 def _migrate_invoices_nullable_billing_year(conn, engine: Engine) -> None:
@@ -170,3 +171,69 @@ def _backfill_properties(conn, engine: Engine) -> None:
             text("UPDATE apartments SET property_id = :property_id WHERE id = :id"),
             {"property_id": property_id, "id": apt.id},
         )
+
+
+def _migrate_advance_payments_per_year(conn, engine: Engine) -> None:
+    """Legacy schema stored advance payments per (lease, month) without a year.
+
+    Such a row applied to the same month of *every* billing year. To keep existing
+    settlements unchanged, each legacy row is copied into every billing year of the
+    apartment in which the lease occupies that month.
+    """
+    if not _table_exists(engine, "advance_payments"):
+        return
+    if "year" in _column_names(engine, "advance_payments"):
+        return
+
+    from datetime import date
+
+    from bkoab.services.allocation import occupied_months_in_year
+
+    def _as_date(value):
+        if value is None or isinstance(value, date):
+            return value
+        return date.fromisoformat(str(value)[:10])
+
+    legacy = conn.execute(
+        text(
+            """
+            SELECT ap.lease_id, ap.month, ap.amount, l.move_in, l.move_out, r.apartment_id
+            FROM advance_payments ap
+            JOIN leases l ON l.id = ap.lease_id
+            JOIN rooms r ON r.id = l.room_id
+            """
+        )
+    ).fetchall()
+    years_by_apartment: dict[int, list[int]] = {}
+    for row in conn.execute(text("SELECT apartment_id, year FROM billing_years")).fetchall():
+        years_by_apartment.setdefault(row.apartment_id, []).append(row.year)
+
+    conn.execute(
+        text(
+            """
+            CREATE TABLE advance_payments__new (
+                id INTEGER PRIMARY KEY,
+                lease_id INTEGER NOT NULL REFERENCES leases(id) ON DELETE CASCADE,
+                year INTEGER NOT NULL,
+                month INTEGER NOT NULL,
+                amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+                CONSTRAINT uq_lease_year_month UNIQUE (lease_id, year, month)
+            )
+            """
+        )
+    )
+    for row in legacy:
+        move_in = _as_date(row.move_in)
+        move_out = _as_date(row.move_out)
+        for year in sorted(set(years_by_apartment.get(row.apartment_id, []))):
+            if row.month not in occupied_months_in_year(move_in, move_out, year):
+                continue
+            conn.execute(
+                text(
+                    "INSERT INTO advance_payments__new (lease_id, year, month, amount) "
+                    "VALUES (:lease_id, :year, :month, :amount)"
+                ),
+                {"lease_id": row.lease_id, "year": year, "month": row.month, "amount": row.amount},
+            )
+    conn.execute(text("DROP TABLE advance_payments"))
+    conn.execute(text("ALTER TABLE advance_payments__new RENAME TO advance_payments"))

@@ -5,7 +5,6 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy.orm import Session, joinedload
 
 from bkoab.models import (
-    AdvancePayment,
     AllocationKey,
     Apartment,
     BillingYear,
@@ -34,6 +33,14 @@ from bkoab.services.allocation import (
     compute_mea_shares,
     compute_room_area_shares,
     occupied_months_in_year,
+)
+from bkoab.services.advance import (
+    current_planned_rate,
+    is_current_tenant,
+    lease_advances_for_year,
+    occupied_month_fraction,
+    overrides_by_lease,
+    suggest_monthly_advance,
 )
 from bkoab.services.person_periods import ensure_default_person_periods, lease_to_allocation_period
 from bkoab.services.proration import prorate_amount
@@ -409,20 +416,17 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
             )
             processed_property = _process_invoices(property_invoices, year, warnings)
 
+    leases_by_id = {lease.id: lease for lease in leases_db}
     lease_occupied_months = {
         lease.id: set(occupied_months_in_year(lease.move_in, lease.move_out, year))
         for lease in leases_db
     }
 
     advance_by_lease: dict[int, Decimal] = {}
-    for payment in db.query(AdvancePayment).join(Lease).join(Room).filter(
-        Room.apartment_id == apartment_id
-    ).all():
-        if payment.month not in lease_occupied_months.get(payment.lease_id, set()):
-            continue
-        advance_by_lease[payment.lease_id] = advance_by_lease.get(
-            payment.lease_id, Decimal("0")
-        ) + Decimal(str(payment.amount))
+    overrides = overrides_by_lease(db, [lease.id for lease in leases_db], year)
+    for lease in leases_db:
+        months = lease_advances_for_year(lease, year, overrides.get(lease.id, {}))
+        advance_by_lease[lease.id] = sum((m.amount for m in months.values()), Decimal("0"))
 
     active_leases = {
         lp.lease_id: lp for lp in lease_periods if party_head_months.get(lp.lease_id, 0) > 0
@@ -568,6 +572,16 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
 
         advance_total = _money(advance_by_lease.get(lease_id, Decimal("0")))
         balance = _money(total_costs - advance_total)
+        lease_db = leases_by_id[lease_id]
+        current = is_current_tenant(lease_db)
+        suggested = (
+            suggest_monthly_advance(
+                _money(total_costs),
+                occupied_month_fraction(lease_db.move_in, lease_db.move_out, year),
+            )
+            if current
+            else None
+        )
         parties.append(
             PartySettlement(
                 lease_id=lease_id,
@@ -580,6 +594,9 @@ def build_settlement_preview(db: Session, apartment_id: int, year: int) -> Settl
                 total_advance_payments=advance_total,
                 balance=balance,
                 balance_type="nachzahlung" if balance > 0 else "guthaben" if balance < 0 else "ausgeglichen",
+                is_current_tenant=current,
+                current_advance_payment=current_planned_rate(lease_db) if current else None,
+                suggested_advance_payment=suggested,
             )
         )
 

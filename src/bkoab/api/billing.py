@@ -1,4 +1,7 @@
+import zipfile
 from decimal import Decimal
+from io import BytesIO
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
@@ -34,10 +37,12 @@ from bkoab.schemas import (
     SettlementPreview,
     default_allocation_key,
 )
+from bkoab.services.advance import lease_advances_for_year, overrides_by_lease
 from bkoab.services.allocation import occupied_months_in_year
 from bkoab.services.docx_export import PersonPeriodLine, generate_settlement_docx, settlement_docx_bytes
 from bkoab.services.pdf_export import build_settlement_pdf
 from bkoab.services.person_periods import ensure_default_person_periods
+from bkoab.services.plausibility import run_plausibility_checks
 from bkoab.services.proration import prorate_amount
 from bkoab.services.settlement import build_settlement_preview
 
@@ -120,7 +125,13 @@ def _invoice_to_read(invoice: Invoice, year: int) -> InvoiceRead:
     )
 
 
-def _build_party_settlement_docx(db: Session, apartment_id: int, year: int, lease_id: int):
+def _build_party_settlement_docx(
+    db: Session,
+    apartment_id: int,
+    year: int,
+    lease_id: int,
+    include_advance_suggestion: bool = True,
+):
     apartment = db.get(Apartment, apartment_id)
     if not apartment:
         raise HTTPException(404, "Wohnung nicht gefunden")
@@ -173,6 +184,7 @@ def _build_party_settlement_docx(db: Session, apartment_id: int, year: int, leas
         payment_text_template=landlord.payment_text_template if landlord else "",
         logo_path=logo_path,
         person_period_lines=person_period_lines,
+        include_advance_suggestion=include_advance_suggestion,
     )
     filename = _settlement_filename(year, party.tenant_name, party.room_name)
     return doc, filename
@@ -208,8 +220,16 @@ def _party_invoice_pdf_attachments(db: Session, party: PartySettlement) -> list[
     return attachments
 
 
-def _build_party_settlement_pdf(db: Session, apartment_id: int, year: int, lease_id: int) -> tuple[bytes, str]:
-    doc, docx_filename = _build_party_settlement_docx(db, apartment_id, year, lease_id)
+def _build_party_settlement_pdf(
+    db: Session,
+    apartment_id: int,
+    year: int,
+    lease_id: int,
+    include_advance_suggestion: bool = True,
+) -> tuple[bytes, str]:
+    doc, docx_filename = _build_party_settlement_docx(
+        db, apartment_id, year, lease_id, include_advance_suggestion
+    )
     preview = build_settlement_preview(db, apartment_id, year)
     party = next((item for item in preview.parties if item.lease_id == lease_id), None)
     if not party:
@@ -497,27 +517,25 @@ def get_advance_payments(apartment_id: int, year: int, db: Session = Depends(get
     leases = (
         db.query(Lease)
         .join(Room)
-        .options(joinedload(Lease.tenant), joinedload(Lease.room))
+        .options(joinedload(Lease.tenant), joinedload(Lease.room), joinedload(Lease.advance_rates))
         .filter(Room.apartment_id == apartment_id)
         .all()
     )
-    payments = {
-        (p.lease_id, p.month): Decimal(str(p.amount))
-        for p in db.query(AdvancePayment).join(Lease).join(Room).filter(Room.apartment_id == apartment_id).all()
-    }
+    overrides = overrides_by_lease(db, [lease.id for lease in leases], year)
     rows = []
     for lease in leases:
-        occupied = occupied_months_in_year(lease.move_in, lease.move_out, year)
-        if not occupied:
+        effective = lease_advances_for_year(lease, year, overrides.get(lease.id, {}))
+        if not effective:
             continue
-        months = {m: payments.get((lease.id, m), Decimal("0")) for m in range(1, 13)}
         rows.append(
             AdvancePaymentMatrixRow(
                 lease_id=lease.id,
                 tenant_name=lease.tenant.name,
                 room_name=lease.room.name,
-                months=months,
-                occupied_months=occupied,
+                months={m: (effective[m].amount if m in effective else Decimal("0")) for m in range(1, 13)},
+                occupied_months=sorted(effective),
+                planned={m: info.planned for m, info in effective.items()},
+                overridden_months=sorted(m for m, info in effective.items() if info.overridden),
             )
         )
     return rows
@@ -530,6 +548,7 @@ def update_advance_payments(
     payload: AdvancePaymentBulkUpdate,
     db: Session = Depends(get_db),
 ):
+    """Store monthly entries for `year`. `amount: null` removes the entry (planned rate applies)."""
     leases = db.query(Lease).join(Room).filter(Room.apartment_id == apartment_id).all()
     leases_by_id = {lease.id: lease for lease in leases}
     for item in payload.payments:
@@ -546,13 +565,20 @@ def update_advance_payments(
             )
         existing = (
             db.query(AdvancePayment)
-            .filter(AdvancePayment.lease_id == item.lease_id, AdvancePayment.month == item.month)
+            .filter(
+                AdvancePayment.lease_id == item.lease_id,
+                AdvancePayment.year == year,
+                AdvancePayment.month == item.month,
+            )
             .first()
         )
-        if existing:
+        if item.amount is None:
+            if existing:
+                db.delete(existing)
+        elif existing:
             existing.amount = item.amount
         else:
-            db.add(AdvancePayment(lease_id=item.lease_id, month=item.month, amount=item.amount))
+            db.add(AdvancePayment(lease_id=item.lease_id, year=year, month=item.month, amount=item.amount))
     db.commit()
     return {"ok": True}
 
@@ -563,14 +589,24 @@ def update_advance_payments(
 )
 def preview_settlement(apartment_id: int, year: int, db: Session = Depends(get_db)):
     try:
-        return build_settlement_preview(db, apartment_id, year)
+        preview = build_settlement_preview(db, apartment_id, year)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
+    preview.checks = run_plausibility_checks(db, apartment_id, year, preview)
+    return preview
 
 
 @router.post("/apartments/{apartment_id}/billing-years/{year}/export/{lease_id}")
-def export_settlement_for_party(apartment_id: int, year: int, lease_id: int, db: Session = Depends(get_db)):
-    doc, filename = _build_party_settlement_docx(db, apartment_id, year, lease_id)
+def export_settlement_for_party(
+    apartment_id: int,
+    year: int,
+    lease_id: int,
+    include_advance_suggestion: bool = True,
+    db: Session = Depends(get_db),
+):
+    doc, filename = _build_party_settlement_docx(
+        db, apartment_id, year, lease_id, include_advance_suggestion
+    )
     content = settlement_docx_bytes(doc)
 
     export_dir = EXPORTS_DIR / str(apartment_id) / str(year)
@@ -585,8 +621,16 @@ def export_settlement_for_party(apartment_id: int, year: int, lease_id: int, db:
 
 
 @router.post("/apartments/{apartment_id}/billing-years/{year}/export/{lease_id}/pdf")
-def export_settlement_pdf_for_party(apartment_id: int, year: int, lease_id: int, db: Session = Depends(get_db)):
-    content, filename = _build_party_settlement_pdf(db, apartment_id, year, lease_id)
+def export_settlement_pdf_for_party(
+    apartment_id: int,
+    year: int,
+    lease_id: int,
+    include_advance_suggestion: bool = True,
+    db: Session = Depends(get_db),
+):
+    content, filename = _build_party_settlement_pdf(
+        db, apartment_id, year, lease_id, include_advance_suggestion
+    )
 
     export_dir = EXPORTS_DIR / str(apartment_id) / str(year)
     export_dir.mkdir(parents=True, exist_ok=True)
@@ -617,6 +661,52 @@ def export_settlements(apartment_id: int, year: int, db: Session = Depends(get_d
         generated.append({"lease_id": party.lease_id, "tenant_name": party.tenant_name, "filename": filename})
 
     return {"files": generated, "export_dir": str(export_dir)}
+
+
+@router.post("/apartments/{apartment_id}/billing-years/{year}/export-zip")
+def export_settlements_zip(
+    apartment_id: int,
+    year: int,
+    format: Literal["docx", "pdf", "both"] = "both",
+    include_advance_suggestion: bool = True,
+    db: Session = Depends(get_db),
+):
+    """All settlements of one billing year in a single ZIP (one file per Mietpartei and format)."""
+    apartment = db.get(Apartment, apartment_id)
+    if not apartment:
+        raise HTTPException(404, "Wohnung nicht gefunden")
+    try:
+        preview = build_settlement_preview(db, apartment_id, year)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    if not preview.parties:
+        raise HTTPException(400, f"Keine Mietpartei im Jahr {year} — nichts zu exportieren")
+
+    export_dir = EXPORTS_DIR / str(apartment_id) / str(year)
+    export_dir.mkdir(parents=True, exist_ok=True)
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for party in preview.parties:
+            if format in ("docx", "both"):
+                doc, filename = _build_party_settlement_docx(
+                    db, apartment_id, year, party.lease_id, include_advance_suggestion
+                )
+                content = settlement_docx_bytes(doc)
+                (export_dir / filename).write_bytes(content)
+                zf.writestr(filename, content)
+            if format in ("pdf", "both"):
+                content, filename = _build_party_settlement_pdf(
+                    db, apartment_id, year, party.lease_id, include_advance_suggestion
+                )
+                (export_dir / filename).write_bytes(content)
+                zf.writestr(filename, content)
+
+    zip_name = f"Abrechnungen_{year}_{_safe_filename_part(apartment.name)}.zip"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_name}"'},
+    )
 
 
 @router.get("/apartments/{apartment_id}/billing-years/{year}/export/{filename}")

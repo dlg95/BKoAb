@@ -15,7 +15,9 @@ from bkoab import config
 from bkoab.config import DATA_DIR, DB_PATH, EXPORTS_DIR, INVOICES_DIR, LETTERHEADS_DIR
 
 EXPORT_FORMAT = "bkoab-data-export"
-EXPORT_FORMAT_VERSION = 1
+# 2: advance_payments are stored per billing year (+ advance_payment_rates). Version 1
+# backups are still imported and migrated; older apps refuse version 2 instead of misreading it.
+EXPORT_FORMAT_VERSION = 2
 MAX_IMPORT_ZIP_BYTES = 200 * 1024 * 1024  # 200 MB
 
 
@@ -89,10 +91,13 @@ def build_user_data_export_zip() -> tuple[bytes, str]:
 
         # Catch any other user files under DATA_DIR (future folders)
         known = {"bkoab.db", "invoices", "letterheads", "exports"}
+        backup_dir = Path(config.BACKUP_DIR).resolve()
         if DATA_DIR.exists():
             for child in sorted(DATA_DIR.iterdir()):
                 if child.name in known or child.name.startswith("."):
                     continue
+                if child.resolve() == backup_dir or child.resolve() in backup_dir.parents:
+                    continue  # never nest automatic backups into a backup
                 if child.is_file():
                     arc = f"data/{child.name}"
                     zf.write(child, arc)

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
@@ -228,12 +228,21 @@ class LeaseCreate(BaseModel):
     persons: int = 1
     move_in: date
     move_out: date | None = None
+    # Optional planned monthly advance payment (Soll) from move-in.
+    advance_payment_monthly: Decimal | None = None
 
     @field_validator("persons")
     @classmethod
     def validate_persons(cls, v: int) -> int:
         if v < 1:
             raise ValueError("Personenanzahl muss mindestens 1 sein")
+        return v
+
+    @field_validator("advance_payment_monthly")
+    @classmethod
+    def validate_advance(cls, v: Decimal | None) -> Decimal | None:
+        if v is not None and v < 0:
+            raise ValueError("Vorauszahlung darf nicht negativ sein")
         return v
 
 
@@ -281,6 +290,13 @@ class PersonPeriodBulkUpdate(BaseModel):
     periods: list[PersonPeriodCreate]
 
 
+class AdvanceRateRead(BaseModel):
+    valid_from: date
+    amount: Decimal
+
+    model_config = {"from_attributes": True}
+
+
 class LeaseRead(BaseModel):
     id: int
     tenant_id: int
@@ -292,6 +308,8 @@ class LeaseRead(BaseModel):
     move_in: date
     move_out: date | None
     person_periods: list[PersonPeriodRead] = Field(default_factory=list)
+    advance_rates: list[AdvanceRateRead] = Field(default_factory=list)
+    current_advance_payment: Decimal | None = None
 
     model_config = {"from_attributes": True}
 
@@ -363,7 +381,8 @@ class InvoiceRead(BaseModel):
 class AdvancePaymentItem(BaseModel):
     lease_id: int
     month: int
-    amount: Decimal = Decimal("0")
+    # None removes the monthly entry so the planned rate (Soll) applies again.
+    amount: Decimal | None = Decimal("0")
 
 
 class AdvancePaymentBulkUpdate(BaseModel):
@@ -376,6 +395,25 @@ class AdvancePaymentMatrixRow(BaseModel):
     room_name: str
     months: dict[int, Decimal]
     occupied_months: list[int]
+    # Planned rate per occupied month (None = no Soll defined) and months with own entries.
+    planned: dict[int, Decimal | None] = Field(default_factory=dict)
+    overridden_months: list[int] = Field(default_factory=list)
+
+
+class AdvanceRateItem(BaseModel):
+    valid_from: date
+    amount: Decimal
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, v: Decimal) -> Decimal:
+        if v < 0:
+            raise ValueError("Vorauszahlung darf nicht negativ sein")
+        return v
+
+
+class AdvanceRateBulkUpdate(BaseModel):
+    rates: list[AdvanceRateItem]
 
 
 class CostLineItem(BaseModel):
@@ -400,6 +438,15 @@ class PartySettlement(BaseModel):
     total_advance_payments: Decimal
     balance: Decimal
     balance_type: str
+    is_current_tenant: bool = False
+    current_advance_payment: Decimal | None = None
+    suggested_advance_payment: Decimal | None = None
+
+
+class PlausibilityCheck(BaseModel):
+    severity: str  # error | warning | info
+    area: str  # rechnungen | vorauszahlungen | mietparteien | stammdaten | einstellungen | verteilung | frist
+    message: str
 
 
 class SettlementPreview(BaseModel):
@@ -411,6 +458,7 @@ class SettlementPreview(BaseModel):
     unit_area_sqm: Decimal | None
     parties: list[PartySettlement]
     warnings: list[str] = Field(default_factory=list)
+    checks: list[PlausibilityCheck] = Field(default_factory=list)
 
 
 class LandlordProfileRead(BaseModel):
@@ -454,6 +502,17 @@ class DashboardPropertySummary(BaseModel):
     billing_years: list[int]
 
 
+class DeadlineRead(BaseModel):
+    year: int
+    deadline: date
+    days_left: int
+    state: str  # exported | open | due_soon | missing | overdue
+    billing_year_exists: bool
+    exported_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class DashboardBillingUnit(BaseModel):
     """Unified top-level billing object — WG-Wohnung or MFH-Gebäude."""
 
@@ -468,6 +527,7 @@ class DashboardBillingUnit(BaseModel):
     active_lease_count: int
     billing_years: list[int]
     total_area_sqm: Decimal | None = None
+    deadlines: list[DeadlineRead] = Field(default_factory=list)
 
 
 class DashboardRead(BaseModel):

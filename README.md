@@ -190,6 +190,8 @@ Mietparteien gehören zur **WG-Wohnung** und werden gemeinsam abgerechnet; jede 
 
 **Personenzahl ändern:** Hat sich die Bewohnerzahl geändert (z. B. Nachzug), klicken Sie auf **Personenzahl**. Dort legen Sie **lückenlose Zeiträume** von Einzug bis Auszug fest — jeder Zeitraum mit eigener Personenzahl.
 
+**Soll-Vorauszahlung:** Beim Anlegen (Feld „NK-Vorauszahlung pro Monat“) oder später über **Vorauszahlung** an der Mietpartei hinterlegen Sie den monatlichen Betrag — bei einer Erhöhung mit einer neuen Zeile „ab Monat“. Dieser Betrag gilt in jeder Abrechnung automatisch für alle bewohnten Monate.
+
 > Die frühere Adresse `/wohnungen/{id}/mietparteien` leitet automatisch auf die WG-Seite weiter.
 
 Ohne korrekte Mietzeiträume und Personenzahlen stimmt die Verteilung nicht.
@@ -218,9 +220,11 @@ In der Rechnungsliste sehen Sie den **Anteil fürs Abrechnungsjahr** — das ist
 
 **Navigation:** `/wohnungen/{id}/abrechnung/{jahr}` → Tab **Vorauszahlungen**
 
-Tragen Sie die **monatlichen NK-Vorauszahlungen** je Mietpartei ein. Es werden nur Monate bearbeitbar angezeigt, in denen der Mieter tatsächlich bewohnt hat.
+Die Tabelle zeigt je Mietpartei die bewohnten Monate. **Grau** steht die Soll-Vorauszahlung aus Schritt 3 — wenn alles wie vereinbart gezahlt wurde, müssen Sie hier nichts tun.
 
-**Tipp:** Mit **Gleicher Betrag für alle Monate** können Sie einen einheitlichen Monatsbetrag schnell übernehmen. Danach **Speichern** nicht vergessen.
+Tragen Sie nur **Abweichungen** ein (z. B. ein ausgefallener Monat = 0). Eigene Eingaben sind hervorgehoben; ein geleertes Feld gilt wieder als Soll. **Abweichungen zurücksetzen** entfernt alle eigenen Eingaben, **Für alle bewohnten Monate übernehmen** setzt einen Betrag für alle Monate. Danach **Speichern**.
+
+Vorauszahlungen werden je Abrechnungsjahr gespeichert.
 
 ---
 
@@ -229,11 +233,27 @@ Tragen Sie die **monatlichen NK-Vorauszahlungen** je Mietpartei ein. Es werden n
 **Navigation:** `/wohnungen/{id}/abrechnung/{jahr}` → Tab **Vorschau & Export**
 
 1. Die Vorschau wird beim Öffnen des Tabs berechnet (**Neu berechnen** aktualisiert sie).
-2. Prüfen Sie die Kostenzeilen, Personenmonate und das Ergebnis (Nachzahlung / Guthaben / ausgeglichen) je Mieter.
-3. Optional: **Zielordner wählen** — sonst öffnet sich beim Speichern der übliche Dateidialog.
-4. Pro Mietpartei auf **DOCX erstellen** klicken.
+2. **Prüfung vor dem Versand** lesen: Fehler (rot), Hinweise (gelb) und Infos (blau), z. B. fehlende Vorauszahlungen, mögliche Doppelerfassungen, fehlende Zimmerflächen, Vermieteranteil durch Leerstand oder die Abrechnungsfrist. Mit dem Link daneben springen Sie zur Stelle, an der Sie es beheben.
+3. Kostenzeilen, Personenmonate und Ergebnis (Nachzahlung / Guthaben / ausgeglichen) je Mietpartei prüfen.
+4. Optional: **Zielordner wählen** — sonst öffnet sich beim Speichern der übliche Dateidialog.
+5. Exportieren — pro Mietpartei **DOCX/PDF erstellen** oder **Alle als ZIP** (DOCX, PDF oder beides).
 
-Jeder Mieter erhält ein eigenes Word-Dokument mit Briefkopf, Kostenaufstellung, Vorauszahlungen und Saldo.
+Jede Mietpartei erhält ein eigenes Dokument mit Briefkopf, Kostenaufstellung, Vorauszahlungen und Saldo. Für Mietparteien, die **noch in der WG wohnen**, enthält es zusätzlich einen **Vorschlag zur künftigen Vorauszahlung** (Kosten je bewohntem Monat, aufgerundet; abschaltbar über das Häkchen in der Werkzeugleiste).
+
+**Abrechnungsfrist:** Die Abrechnung muss spätestens am 31.12. des Folgejahres bei den Mieter:innen sein (§ 556 Abs. 3 BGB). Das Dashboard erinnert 90 Tage vorher; ein Jahr gilt als „erstellt“, sobald ein DOCX/PDF exportiert wurde.
+
+---
+
+### Datensicherung
+
+Unter **Einstellungen → Automatische Sicherung** sehen Sie alle automatischen Sicherungen. BKoAb sichert beim Start, alle 7 Tage und beim Beenden — jeweils nur, wenn sich etwas geändert hat — und behält die letzten 10. Jede Sicherung lässt sich herunterladen oder wiederherstellen (der aktuelle Stand wird vorher selbst gesichert). Die Dateien haben dasselbe Format wie **Daten exportieren** und können auch auf einem anderen Gerät importiert werden.
+
+| Umgebungsvariable | Bedeutung | Standard |
+|-------------------|-----------|----------|
+| `BKOAB_DATA_DIR` | Datenverzeichnis | `./data` bzw. macOS `~/Library/Application Support/BKoAb` |
+| `BKOAB_BACKUP_DIR` | Ordner der automatischen Sicherungen | `BKoAb-Sicherungen` neben dem Datenverzeichnis |
+| `BKOAB_AUTO_BACKUP_DAYS` | Intervall in Tagen, `0` = aus | `7` |
+| `BKOAB_AUTO_BACKUP_KEEP` | Anzahl aufbewahrter Sicherungen | `10` |
 
 ---
 

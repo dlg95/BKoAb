@@ -15,6 +15,8 @@ import type { LucideIcon } from "lucide-react"
 
 import { Callout } from "@/components/callout"
 import { CreateApartmentDialog } from "@/components/create-apartment-dialog"
+import { DeadlineBadge } from "@/components/deadline-badge"
+import { deadlineText, isUrgent } from "@/lib/deadlines"
 import { EmptyState } from "@/components/empty-state"
 import { LinkButton } from "@/components/link-button"
 import { PageHeader } from "@/components/page-header"
@@ -35,6 +37,10 @@ export function DashboardPage() {
   const wgUnits = data?.billing_units.filter((unit) => unit.kind === "wg" && unit.apartment_id) ?? []
   const lastYear = new Date().getFullYear() - 1
   const landlordIncomplete = !!data && (!data.landlord || data.landlord.name === "Vermieter" || !data.landlord.street)
+
+  const urgent = wgUnits.flatMap((unit) =>
+    unit.deadlines.filter(isUrgent).map((d) => ({ unit, deadline: d })),
+  )
 
   if (isLoading) return <p className="text-muted-foreground">Laden…</p>
 
@@ -66,6 +72,37 @@ export function DashboardPage() {
           }
         >
           Name und Adresse des Vermieters erscheinen auf jeder Abrechnung.
+        </Callout>
+      ) : null}
+
+      {urgent.length ? (
+        <Callout
+          variant={urgent.some((u) => u.deadline.state === "overdue") ? "error" : "warning"}
+          title="Abrechnungsfristen beachten"
+        >
+          <ul className="space-y-0.5">
+            {urgent.map(({ unit, deadline }) => (
+              <li key={`${unit.apartment_id}-${deadline.year}`}>
+                <LinkButton
+                  variant="link"
+                  className="h-auto p-0 text-inherit underline"
+                  to={
+                    deadline.billing_year_exists
+                      ? `/wohnungen/${unit.apartment_id}/abrechnung/${deadline.year}`
+                      : `/wohnungen/${unit.apartment_id}?tab=abrechnungen`
+                  }
+                >
+                  {unit.name}
+                </LinkButton>{" "}
+                — {deadlineText(deadline)}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs opacity-80">
+            Die Abrechnung muss Mieter:innen spätestens 12 Monate nach Ende des Abrechnungsjahres
+            zugehen (§ 556 Abs. 3 BGB), sonst sind Nachforderungen in der Regel ausgeschlossen. Als
+            „erstellt“ gilt ein Jahr, sobald ein DOCX/PDF exportiert wurde.
+          </p>
         </Callout>
       ) : null}
 
@@ -152,6 +189,14 @@ export function DashboardPage() {
                       )}
                     </div>
                   </div>
+
+                  {unit.deadlines.length ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {unit.deadlines.map((d) => (
+                        <DeadlineBadge key={d.year} deadline={d} />
+                      ))}
+                    </div>
+                  ) : null}
 
                   <div className="flex flex-wrap gap-2 border-t pt-4">
                     <LinkButton size="sm" to={`/wohnungen/${apartmentId}`}>

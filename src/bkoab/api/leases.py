@@ -2,14 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from bkoab.database import get_db
-from bkoab.models import Lease, LeasePersonPeriod, Room, Tenant
+from bkoab.models import AdvancePaymentRate, Lease, LeasePersonPeriod, Room, Tenant
 from bkoab.schemas import (
+    AdvanceRateBulkUpdate,
+    AdvanceRateRead,
     LeaseCreate,
     LeaseRead,
     LeaseUpdate,
     PersonPeriodBulkUpdate,
     PersonPeriodRead,
 )
+from bkoab.services.advance import current_planned_rate
 from bkoab.services.person_periods import (
     ensure_default_person_periods,
     sync_person_periods_to_lease,
@@ -31,6 +34,8 @@ def _lease_to_read(lease: Lease) -> LeaseRead:
         move_in=lease.move_in,
         move_out=lease.move_out,
         person_periods=[PersonPeriodRead.model_validate(p) for p in lease.person_periods],
+        advance_rates=[AdvanceRateRead.model_validate(r) for r in lease.advance_rates],
+        current_advance_payment=current_planned_rate(lease),
     )
 
 
@@ -61,6 +66,7 @@ def list_leases(apartment_id: int, db: Session = Depends(get_db)):
             joinedload(Lease.tenant),
             joinedload(Lease.room),
             joinedload(Lease.person_periods),
+            joinedload(Lease.advance_rates),
         )
         .filter(Room.apartment_id == apartment_id)
         .all()
@@ -108,6 +114,14 @@ def create_lease(apartment_id: int, payload: LeaseCreate, db: Session = Depends(
             persons=payload.persons,
         )
     )
+    if payload.advance_payment_monthly is not None:
+        db.add(
+            AdvancePaymentRate(
+                lease_id=lease.id,
+                valid_from=payload.move_in.replace(day=1),
+                amount=payload.advance_payment_monthly,
+            )
+        )
     db.commit()
     lease = (
         db.query(Lease)
@@ -115,6 +129,7 @@ def create_lease(apartment_id: int, payload: LeaseCreate, db: Session = Depends(
             joinedload(Lease.tenant),
             joinedload(Lease.room),
             joinedload(Lease.person_periods),
+            joinedload(Lease.advance_rates),
         )
         .filter(Lease.id == lease.id)
         .one()
@@ -130,6 +145,7 @@ def update_lease(lease_id: int, payload: LeaseUpdate, db: Session = Depends(get_
             joinedload(Lease.tenant),
             joinedload(Lease.room),
             joinedload(Lease.person_periods),
+            joinedload(Lease.advance_rates),
         )
         .filter(Lease.id == lease_id)
         .first()
@@ -179,6 +195,7 @@ def update_lease(lease_id: int, payload: LeaseUpdate, db: Session = Depends(get_
             joinedload(Lease.tenant),
             joinedload(Lease.room),
             joinedload(Lease.person_periods),
+            joinedload(Lease.advance_rates),
         )
         .filter(Lease.id == lease_id)
         .one()
@@ -225,6 +242,31 @@ def update_person_periods(
     for row in created:
         db.refresh(row)
     return [PersonPeriodRead.model_validate(p) for p in created]
+
+
+@router.put("/leases/{lease_id}/advance-rates", response_model=list[AdvanceRateRead])
+def update_advance_rates(lease_id: int, payload: AdvanceRateBulkUpdate, db: Session = Depends(get_db)):
+    """Replace the planned monthly advance payments (Soll) of a lease. Dates snap to month start."""
+    lease = db.query(Lease).options(joinedload(Lease.advance_rates)).filter(Lease.id == lease_id).first()
+    if not lease:
+        raise HTTPException(404, "Mietvertrag nicht gefunden")
+
+    by_month: dict = {}
+    for item in payload.rates:
+        by_month[item.valid_from.replace(day=1)] = item.amount
+    if len(by_month) != len(payload.rates):
+        raise HTTPException(400, "Pro Monat ist nur ein Vorauszahlungsbetrag möglich")
+
+    for existing in list(lease.advance_rates):
+        db.delete(existing)
+    db.flush()
+    created = [
+        AdvancePaymentRate(lease_id=lease.id, valid_from=valid_from, amount=amount)
+        for valid_from, amount in sorted(by_month.items())
+    ]
+    db.add_all(created)
+    db.commit()
+    return [AdvanceRateRead.model_validate(r) for r in created]
 
 
 @router.delete("/leases/{lease_id}", status_code=204)

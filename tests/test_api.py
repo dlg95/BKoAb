@@ -81,7 +81,7 @@ def client(tmp_path):
         )
         lease = db.query(Lease).first()
         for month in range(1, 13):
-            db.add(AdvancePayment(lease_id=lease.id, month=month, amount=Decimal("50")))
+            db.add(AdvancePayment(lease_id=lease.id, year=2025, month=month, amount=Decimal("50")))
         db.commit()
         db.close()
 
@@ -741,3 +741,152 @@ def test_update_lease_rejects_overlap_and_inverted_dates(client):
         json={"tenant_name": "Cara", "room_id": lease["room_id"], "move_in": "2030-05-01", "move_out": "2030-01-01"},
     )
     assert inverted_create.status_code == 400
+
+
+def _create_current_lease(client, room_id: int, **extra):
+    payload = {"tenant_name": "Clara Current", "room_id": room_id, "persons": 1, "move_in": "2025-07-01", **extra}
+    response = client.post("/api/apartments/1/leases", json=payload)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def _second_room_id(client) -> int:
+    return client.get("/api/apartments/1").json()["rooms"][1]["id"]
+
+
+def test_planned_advance_rate_and_monthly_overrides(client):
+    lease = _create_current_lease(client, _second_room_id(client), advance_payment_monthly="80")
+    assert lease["current_advance_payment"] == "80.00"
+    assert lease["advance_rates"][0]["valid_from"] == "2025-07-01"
+
+    rows = client.get("/api/apartments/1/billing-years/2025/advance-payments").json()
+    clara = next(r for r in rows if r["lease_id"] == lease["id"])
+    assert clara["occupied_months"] == [7, 8, 9, 10, 11, 12]
+    assert clara["months"]["7"] == "80.00"
+    assert clara["planned"]["7"] == "80.00"
+    assert clara["overridden_months"] == []
+
+    # Deviating entry for August, then back to Soll via null
+    client.put(
+        "/api/apartments/1/billing-years/2025/advance-payments",
+        json={"payments": [{"lease_id": lease["id"], "month": 8, "amount": "0"}]},
+    )
+    party = next(p for p in client.get("/api/apartments/1/billing-years/2025/preview").json()["parties"] if p["lease_id"] == lease["id"])
+    assert float(party["total_advance_payments"]) == pytest.approx(5 * 80)
+    client.put(
+        "/api/apartments/1/billing-years/2025/advance-payments",
+        json={"payments": [{"lease_id": lease["id"], "month": 8, "amount": None}]},
+    )
+    party = next(p for p in client.get("/api/apartments/1/billing-years/2025/preview").json()["parties"] if p["lease_id"] == lease["id"])
+    assert float(party["total_advance_payments"]) == pytest.approx(6 * 80)
+
+    # Rate change from October
+    response = client.put(
+        f"/api/leases/{lease['id']}/advance-rates",
+        json={"rates": [{"valid_from": "2025-07-01", "amount": "80"}, {"valid_from": "2025-10-15", "amount": "100"}]},
+    )
+    assert response.status_code == 200
+    assert response.json()[1]["valid_from"] == "2025-10-01"
+    party = next(p for p in client.get("/api/apartments/1/billing-years/2025/preview").json()["parties"] if p["lease_id"] == lease["id"])
+    assert float(party["total_advance_payments"]) == pytest.approx(3 * 80 + 3 * 100)
+
+
+def test_advance_payments_are_stored_per_year(client):
+    lease = _create_current_lease(client, _second_room_id(client))
+    client.post("/api/apartments/1/billing-years", json={"year": 2026})
+    client.put(
+        "/api/apartments/1/billing-years/2026/advance-payments",
+        json={"payments": [{"lease_id": lease["id"], "month": 7, "amount": "99"}]},
+    )
+    rows_2025 = client.get("/api/apartments/1/billing-years/2025/advance-payments").json()
+    rows_2026 = client.get("/api/apartments/1/billing-years/2026/advance-payments").json()
+    assert next(r for r in rows_2025 if r["lease_id"] == lease["id"])["months"]["7"] == "0"
+    assert next(r for r in rows_2026 if r["lease_id"] == lease["id"])["months"]["7"] == "99.00"
+
+
+def test_advance_suggestion_only_for_current_tenants(client):
+    lease = _create_current_lease(client, _second_room_id(client), advance_payment_monthly="10")
+    parties = {p["lease_id"]: p for p in client.get("/api/apartments/1/billing-years/2025/preview").json()["parties"]}
+
+    current = parties[lease["id"]]
+    assert current["is_current_tenant"] is True
+    assert current["current_advance_payment"] == "10.00"
+    # costs ÷ 6 occupied months, rounded up to whole euros
+    expected = -(-float(current["total_costs"]) // 6)
+    assert float(current["suggested_advance_payment"]) == pytest.approx(expected)
+
+    moved_out = next(p for lid, p in parties.items() if lid != lease["id"])
+    assert moved_out["is_current_tenant"] is False
+    assert moved_out["suggested_advance_payment"] is None
+
+    from docx import Document
+
+    def docx_text(lease_id: int, **params) -> str:
+        response = client.post(f"/api/apartments/1/billing-years/2025/export/{lease_id}", params=params)
+        assert response.status_code == 200
+        return "\n".join(p.text for p in Document(BytesIO(response.content)).paragraphs)
+
+    assert "Künftige Vorauszahlung" in docx_text(lease["id"])
+    assert "bisher 10,00" in docx_text(lease["id"])
+    assert "Künftige Vorauszahlung" not in docx_text(lease["id"], include_advance_suggestion="false")
+    assert "Künftige Vorauszahlung" not in docx_text(moved_out["lease_id"])
+
+
+def test_plausibility_checks(client):
+    _create_current_lease(client, _second_room_id(client))
+    client.post(
+        "/api/apartments/1/billing-years/2025/invoices",
+        json={"invoice_type": "gas", "amount": "1200", "period_start": "2025-01-01", "period_end": "2025-12-31"},
+    )
+    checks = client.get("/api/apartments/1/billing-years/2025/preview").json()["checks"]
+    messages = " | ".join(c["message"] for c in checks)
+    assert any(c["area"] == "rechnungen" and "doppelt" in c["message"] for c in checks), messages
+    assert any(c["area"] == "vorauszahlungen" and "Clara Current" in c["message"] for c in checks), messages
+    assert any(c["area"] == "einstellungen" for c in checks), messages
+    assert [c["severity"] for c in checks] == sorted(
+        (c["severity"] for c in checks), key={"error": 0, "warning": 1, "info": 2}.get
+    )
+
+    client.post("/api/apartments/1/billing-years", json={"year": 2026})
+    empty = client.get("/api/apartments/1/billing-years/2026/preview").json()["checks"]
+    assert any(c["severity"] == "error" and c["area"] == "rechnungen" for c in empty)
+
+
+def test_export_zip_contains_all_parties(client):
+    _create_current_lease(client, _second_room_id(client))
+    response = client.post("/api/apartments/1/billing-years/2025/export-zip", params={"format": "docx"})
+    assert response.status_code == 200, response.text
+    assert "Abrechnungen_2025_WG_Test.zip" in response.headers["content-disposition"]
+    import zipfile
+
+    with zipfile.ZipFile(BytesIO(response.content)) as zf:
+        names = sorted(zf.namelist())
+    assert len(names) == 2
+    assert all(n.endswith(".docx") for n in names)
+
+
+def test_dashboard_deadlines():
+    from datetime import date, datetime
+
+    from bkoab.services.deadlines import deadline_state, settlement_deadline
+
+    assert settlement_deadline(2025) == date(2026, 12, 31)
+    today = date(2026, 10, 15)
+    assert deadline_state(2025, exists=True, exported=None, today=today).state == "due_soon"
+    assert deadline_state(2025, exists=False, exported=None, today=date(2026, 3, 1)).state == "missing"
+    assert deadline_state(2025, exists=True, exported=None, today=date(2026, 3, 1)).state == "open"
+    assert deadline_state(2024, exists=True, exported=None, today=today).state == "overdue"
+    assert deadline_state(2024, exists=True, exported=datetime(2025, 5, 1), today=today).state == "exported"
+
+
+def test_dashboard_lists_deadlines(client):
+    apt = client.post("/api/apartments", json={"name": "WG Frist"}).json()
+    room = client.post(f"/api/apartments/{apt['id']}/rooms", json={"name": "Z1"}).json()
+    client.post(
+        f"/api/apartments/{apt['id']}/leases",
+        json={"tenant_name": "Dora", "room_id": room["id"], "move_in": "2020-01-01"},
+    )
+    units = client.get("/api/dashboard").json()["billing_units"]
+    deadlines = next(u for u in units if u["apartment_id"] == apt["id"])["deadlines"]
+    assert deadlines, "lease in 2025 → deadline for the 2025 settlement expected"
+    assert {d["state"] for d in deadlines} <= {"exported", "open", "due_soon", "missing", "overdue"}
