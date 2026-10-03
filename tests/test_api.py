@@ -676,3 +676,68 @@ def test_mea_property_invoice_distribution(client):
     share2 = float(preview2["parties"][0]["total_costs"])
     assert share1 == pytest.approx(300.0, rel=0.02)
     assert share2 == pytest.approx(500.0, rel=0.02)
+
+
+def test_update_lease_move_out_syncs_person_periods(client):
+    lease = client.get("/api/apartments/1/leases").json()[0]
+    lease_id = lease["id"]
+
+    shorter = client.put(f"/api/leases/{lease_id}", json={"move_out": "2025-06-30"})
+    assert shorter.status_code == 200
+    periods = shorter.json()["person_periods"]
+    assert periods[-1]["valid_to"] == "2025-06-30"
+    # Person periods stay valid for the editor after the change
+    resave = client.put(
+        f"/api/leases/{lease_id}/person-periods",
+        json={"periods": [{"valid_from": p["valid_from"], "valid_to": p["valid_to"], "persons": p["persons"]} for p in periods]},
+    )
+    assert resave.status_code == 200
+
+    cleared = client.put(f"/api/leases/{lease_id}", json={"move_out": None})
+    assert cleared.status_code == 200
+    assert cleared.json()["move_out"] is None
+    assert cleared.json()["person_periods"][-1]["valid_to"] is None
+
+    earlier = client.put(f"/api/leases/{lease_id}", json={"move_in": "2024-10-01"})
+    assert earlier.json()["person_periods"][0]["valid_from"] == "2024-10-01"
+
+
+def test_update_lease_tenant_and_room(client):
+    lease = client.get("/api/apartments/1/leases").json()[0]
+    apartment = client.get("/api/apartments/1").json()
+    other_room = next(r for r in apartment["rooms"] if r["id"] != lease["room_id"])
+
+    response = client.put(
+        f"/api/leases/{lease['id']}",
+        json={"tenant_name": "Anna Neu", "tenant_contact": "anna@example.org", "room_id": other_room["id"]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tenant_name"] == "Anna Neu"
+    assert data["tenant_contact"] == "anna@example.org"
+    assert data["room_id"] == other_room["id"]
+
+    blank = client.put(f"/api/leases/{lease['id']}", json={"tenant_name": "  "})
+    assert blank.status_code == 400
+
+
+def test_update_lease_rejects_overlap_and_inverted_dates(client):
+    lease = client.get("/api/apartments/1/leases").json()[0]
+    created = client.post(
+        "/api/apartments/1/leases",
+        json={"tenant_name": "Ben", "room_id": lease["room_id"], "move_in": "2026-01-01"},
+    )
+    assert created.status_code == 201
+
+    overlap = client.put(f"/api/leases/{lease['id']}", json={"move_out": None})
+    assert overlap.status_code == 400
+    assert "Ben" in overlap.json()["detail"]
+
+    inverted = client.put(f"/api/leases/{lease['id']}", json={"move_out": "2024-01-01"})
+    assert inverted.status_code == 400
+
+    inverted_create = client.post(
+        "/api/apartments/1/leases",
+        json={"tenant_name": "Cara", "room_id": lease["room_id"], "move_in": "2030-05-01", "move_out": "2030-01-01"},
+    )
+    assert inverted_create.status_code == 400

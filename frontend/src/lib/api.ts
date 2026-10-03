@@ -1,16 +1,21 @@
 import { fetchExport, fetchExportGet } from "@/lib/download"
+import { ApiError, parseErrorDetail } from "@/lib/errors"
+
+export { ApiError, errorMessage, parseErrorDetail } from "@/lib/errors"
 
 const API_BASE = "/api"
+
+async function throwApiError(res: Response): Promise<never> {
+  const text = await res.text()
+  throw new ApiError(res.status, parseErrorDetail(text, res.statusText || `Fehler ${res.status}`))
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...options?.headers },
     ...options,
   })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || res.statusText)
-  }
+  if (!res.ok) await throwApiError(res)
   if (res.status === 204) return undefined as T
   return res.json()
 }
@@ -52,6 +57,7 @@ export type Lease = {
   id: number
   tenant_id: number
   tenant_name: string
+  tenant_contact: string
   room_id: number
   room_name: string
   persons: number
@@ -188,6 +194,17 @@ export const api = {
     request<Apartment>(`/properties/${propertyId}/units`, { method: "POST", body: JSON.stringify(data) }),
   leases: (apartmentId: number) => request<Lease[]>(`/apartments/${apartmentId}/leases`),
   createLease: (apartmentId: number, data: object) => request<Lease>(`/apartments/${apartmentId}/leases`, { method: "POST", body: JSON.stringify(data) }),
+  updateLease: (
+    id: number,
+    data: {
+      tenant_name?: string
+      tenant_contact?: string
+      room_id?: number
+      persons?: number
+      move_in?: string
+      move_out?: string | null
+    },
+  ) => request<Lease>(`/leases/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteLease: (id: number) => request<void>(`/leases/${id}`, { method: "DELETE" }),
   updatePersonPeriods: (leaseId: number, periods: object[]) =>
     request<Lease["person_periods"]>(`/leases/${leaseId}/person-periods`, {
@@ -233,7 +250,7 @@ export const api = {
     const form = new FormData()
     form.append("file", file)
     const res = await fetch(`${API_BASE}/invoices/${invoiceId}/document`, { method: "POST", body: form })
-    if (!res.ok) throw new Error(await res.text())
+    if (!res.ok) await throwApiError(res)
     return res.json()
   },
   downloadInvoiceDocument: (invoiceId: number) =>
@@ -277,10 +294,7 @@ export const api = {
     const form = new FormData()
     form.append("file", file)
     const res = await fetch(`${API_BASE}/data-import`, { method: "POST", body: form })
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(text || res.statusText)
-    }
+    if (!res.ok) await throwApiError(res)
     return res.json() as Promise<{
       ok: boolean
       imported_files: number
@@ -289,6 +303,13 @@ export const api = {
       exported_at?: string
     }>
   },
+}
+
+export function formatDate(value: string | null | undefined, fallback = "—") {
+  if (!value) return fallback
+  const [y, m, d] = value.split("-")
+  if (!y || !m || !d) return value
+  return `${d}.${m}.${y}`
 }
 
 export function formatEur(value: string | number) {

@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -14,7 +15,10 @@ def _resource_dir() -> Path:
 
 
 def _user_data_dir() -> Path:
-    """Writable app data (SQLite, exports, invoices)."""
+    """Writable app data (SQLite, exports, invoices). Override with BKOAB_DATA_DIR."""
+    override = os.environ.get("BKOAB_DATA_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
     if _is_frozen():
         return Path.home() / "Library" / "Application Support" / "BKoAb"
     return Path(__file__).resolve().parents[2] / "data"

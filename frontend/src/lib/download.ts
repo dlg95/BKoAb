@@ -1,3 +1,5 @@
+import { parseErrorDetail } from "@/lib/errors"
+
 function parseFilename(contentDisposition: string | null, fallback: string) {
   if (!contentDisposition) return fallback
   const match = /filename="?([^"]+)"?/i.exec(contentDisposition)
@@ -8,7 +10,7 @@ export async function fetchExport(url: string, fallbackFilename: string) {
   const response = await fetch(url, { method: "POST" })
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(text || response.statusText)
+    throw new Error(parseErrorDetail(text, response.statusText))
   }
   const blob = await response.blob()
   const filename = parseFilename(response.headers.get("Content-Disposition"), fallbackFilename)
@@ -19,7 +21,7 @@ export async function fetchExportGet(url: string, fallbackFilename: string) {
   const response = await fetch(url)
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(text || response.statusText)
+    throw new Error(parseErrorDetail(text, response.statusText))
   }
   const blob = await response.blob()
   const filename = parseFilename(response.headers.get("Content-Disposition"), fallbackFilename)

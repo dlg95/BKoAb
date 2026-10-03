@@ -133,3 +133,26 @@ def test_data_import_rejects_non_zip(export_client):
     files = {"file": ("nope.txt", b"hello", "text/plain")}
     response = export_client.post("/api/data-import", files=files)
     assert response.status_code == 400
+
+
+LEGACY_BACKUP = Path(__file__).parent / "fixtures" / "legacy_v0_1_master_backup.zip"
+
+
+def test_data_import_of_legacy_backup_is_usable_without_restart(export_client):
+    """Backups from the first schema (pre-Property, pre-Verteilerquote) must keep working."""
+    files = {"file": ("legacy.zip", LEGACY_BACKUP.read_bytes(), "application/zip")}
+    response = export_client.post("/api/data-import", files=files)
+    assert response.status_code == 200, response.text
+
+    apartments = export_client.get("/api/apartments").json()
+    assert [a["name"] for a in apartments] == ["Alt-WG"]
+
+    preview = export_client.get(f"/api/apartments/{apartments[0]['id']}/billing-years/2024/preview")
+    assert preview.status_code == 200, preview.text
+    party = preview.json()["parties"][0]
+    assert party["tenant_name"] == "Alt Mieter"
+    assert float(party["total_costs"]) == pytest.approx(600.0)
+
+    invoices = export_client.get(f"/api/apartments/{apartments[0]['id']}/billing-years/2024/invoices")
+    assert invoices.status_code == 200
+    assert invoices.json()[0]["allocation_key"] == "personenmonate"

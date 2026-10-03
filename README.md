@@ -77,7 +77,7 @@ Danach im Browser öffnen:
 - **Oberfläche:** http://127.0.0.1:5173
 - **API (technisch):** http://127.0.0.1:8000
 
-Die Navigation oben führt Sie zu **Dashboard**, **Wohnungen** und **Briefkopf**.
+Die Navigation oben führt Sie zu **Dashboard**, **WG-Wohnungen**, **Einstellungen** (Briefkopf, Datensicherung) und **Rechtliches**.
 
 ---
 
@@ -142,7 +142,7 @@ Dies ist der **Haupt-Workflow** und für die meisten Nutzer der richtige Einstie
 
 ### 1. Briefkopf anlegen
 
-**Navigation:** Menü **Briefkopf** → `/einstellungen`
+**Navigation:** Menü **Einstellungen** → `/einstellungen`
 
 Tragen Sie Ihre **Vermieterdaten** ein:
 
@@ -158,10 +158,9 @@ Diese Angaben erscheinen später im DOCX-Briefkopf jeder Abrechnung. Klicken Sie
 
 **Navigation:** Menü **Wohnungen** → `/wohnungen`
 
-1. Legen Sie eine **neue Wohnung** an (Name, Straße, PLZ/Ort).
-2. Öffnen Sie die Wohnung über **Bearbeiten** → `/wohnungen/{id}`.
-3. Unter **Zimmer** legen Sie alle vermieteten Räume an (z. B. „Zimmer 1“, „Zimmer 2“).
-4. Optional: Tragen Sie unter **Stammdaten & Bankverbindung** IBAN, Kontoinhaber und Verwendungszweck-Hinweis ein — falls die Zahlungsdaten von den globalen Vermieterdaten abweichen sollen.
+1. Klicken Sie auf **WG-Wohnung anlegen** (Bezeichnung, Straße, PLZ/Ort, optional Gesamtfläche). Danach öffnet sich die WG-Seite `/wohnungen/{id}`.
+2. Im Tab **Zimmer & Mietparteien** legen Sie alle vermieteten Zimmer an (z. B. „Zimmer 1“, „Zimmer 2“), optional mit Fläche.
+3. Adresse und Gesamtfläche ändern Sie später im Tab **Stammdaten**.
 
 **Hierarchie WG:**
 
@@ -176,16 +175,22 @@ Die Verteilung innerhalb der WG erfolgt über **Personenmonate** je Zimmer.
 
 ### 3. Mietparteien mit Bewohnerzahl und Mietzeiträumen angeben
 
-**Navigation:** `/wohnungen/{id}/mietparteien`
+**Navigation:** `/wohnungen/{id}` → Tab **Zimmer & Mietparteien**
 
-Für jeden Mieter:
+Mietparteien gehören zur **WG-Wohnung** und werden gemeinsam abgerechnet; jede Mietpartei bewohnt ein Zimmer. Jede Zimmer-Karte zeigt ihre Mietparteien (aktuell, zieht ein, ausgezogen).
 
-1. **Mietername** und optional **Kontakt** eintragen.
-2. **Zimmer** zuweisen.
-3. **Personen (initial)** — wie viele Personen zu Mietbeginn im Zimmer wohnen.
+**Mietpartei hinzufügen** — oben rechts (Zimmer im Dialog wählen) oder direkt in der Zimmer-Karte (Zimmer vorausgewählt):
+
+1. **Name** und optional **Kontakt** eintragen.
+2. **Zimmer** wählen.
+3. **Personen bei Einzug**.
 4. **Einzug** und optional **Auszug** als Datum.
 
-**Personenzahl ändern:** Hat sich die Bewohnerzahl im Laufe des Mietverhältnisses geändert (z. B. Nachzug), klicken Sie bei der Mietpartei auf **Personenzahl**. Dort legen Sie **lückenlose Zeiträume** von Einzug bis Auszug fest — jeder Zeitraum mit eigener Personenzahl.
+**Auszug nachtragen / Daten korrigieren:** In der Zimmer-Karte bei der Mietpartei auf **Bearbeiten**. Personenzahl-Zeiträume werden automatisch an Ein- und Auszug angepasst.
+
+**Personenzahl ändern:** Hat sich die Bewohnerzahl geändert (z. B. Nachzug), klicken Sie auf **Personenzahl**. Dort legen Sie **lückenlose Zeiträume** von Einzug bis Auszug fest — jeder Zeitraum mit eigener Personenzahl.
+
+> Die frühere Adresse `/wohnungen/{id}/mietparteien` leitet automatisch auf die WG-Seite weiter.
 
 Ohne korrekte Mietzeiträume und Personenzahlen stimmt die Verteilung nicht.
 
@@ -193,7 +198,7 @@ Ohne korrekte Mietzeiträume und Personenzahlen stimmt die Verteilung nicht.
 
 ### 4. Abrechnungsjahr anlegen und Rechnungen erfassen
 
-**Navigation:** `/wohnungen/{id}` → Bereich **Abrechnungsjahre** → **Abrechnung anlegen**  
+**Navigation:** `/wohnungen/{id}` → Tab **Abrechnungen** → **Abrechnung anlegen**  
 oder direkt `/wohnungen/{id}/abrechnung/{jahr}`
 
 1. Legen Sie ein **Abrechnungsjahr** an (z. B. 2025).
@@ -223,7 +228,7 @@ Tragen Sie die **monatlichen NK-Vorauszahlungen** je Mietpartei ein. Es werden n
 
 **Navigation:** `/wohnungen/{id}/abrechnung/{jahr}` → Tab **Vorschau & Export**
 
-1. Klicken Sie auf **Vorschau berechnen**.
+1. Die Vorschau wird beim Öffnen des Tabs berechnet (**Neu berechnen** aktualisiert sie).
 2. Prüfen Sie die Kostenzeilen, Personenmonate und das Ergebnis (Nachzahlung / Guthaben / ausgeglichen) je Mieter.
 3. Optional: **Zielordner wählen** — sonst öffnet sich beim Speichern der übliche Dateidialog.
 4. Pro Mietpartei auf **DOCX erstellen** klicken.
@@ -270,14 +275,14 @@ Gebäude (= Übereinheit, z. B. MFH)
 
 | Seite | Pfad | Zweck |
 |-------|------|-------|
-| Dashboard | `/` | Übersicht aller Gebäude und Wohnungen |
-| Wohnungen | `/wohnungen` | Wohnungen anlegen und verwalten |
-| Wohnungsdetails | `/wohnungen/{id}` | Stammdaten, Zimmer, Abrechnungsjahre |
-| Mietparteien | `/wohnungen/{id}/mietparteien` | Mieter, Einzug/Auszug, Personenzahl |
-| Abrechnung | `/wohnungen/{id}/abrechnung/{jahr}` | Rechnungen, Vorauszahlungen, Export |
-| Gebäude | `/gebaeude` | MFH/WEG-Gebäude anlegen |
-| Gebäudedetails | `/gebaeude/{id}` | Stammdaten, Wohnungen, Haus-Rechnungen |
-| Briefkopf | `/einstellungen` | Vermieterdaten und Zahlungstext |
+| Dashboard | `/` | Übersicht aller WG-Wohnungen und Abrechnungsjahre |
+| WG-Wohnungen | `/wohnungen` | WG-Wohnungen anlegen und öffnen |
+| WG-Seite | `/wohnungen/{id}` | Tabs: Zimmer & Mietparteien · Abrechnungen · Stammdaten |
+| Abrechnung | `/wohnungen/{id}/abrechnung/{jahr}` | Rechnungen, Vorauszahlungen, Vorschau & Export |
+| Einstellungen | `/einstellungen` | Briefkopf, Zahlungstext, Datenexport/-import |
+| Rechtliches | `/rechtliches` | Nutzungsbedingungen, Haftung, Drittlizenzen |
+
+Die Gebäude-/MFH-Seiten (`/gebaeude`) sind derzeit archiviert (siehe [ROADMAP.md](ROADMAP.md)).
 
 ---
 
@@ -288,7 +293,7 @@ Briefkopf (/einstellungen)
     ↓
 Wohnung + Zimmer (/wohnungen)
     ↓
-Mietparteien (/wohnungen/{id}/mietparteien)
+Zimmer & Mietparteien (/wohnungen/{id})
     ↓
 Abrechnungsjahr + Rechnungen (/wohnungen/{id}/abrechnung/{jahr})
     ↓
@@ -301,12 +306,21 @@ Vorschau & DOCX-Export (Tab „Vorschau & Export“)
 
 ## Für Entwickler
 
-### Tests ausführen
+### Tests & Checks
 
 ```bash
 source .venv/bin/activate
-pytest
+pytest                      # nutzt automatisch ein temporäres Datenverzeichnis
+cd frontend && pnpm lint && pnpm build
 ```
+
+Das Datenverzeichnis lässt sich mit `BKOAB_DATA_DIR=/pfad ./run.sh` festlegen.
+
+### Changelog & Kompatibilität
+
+- Änderungen werden in [CHANGELOG.md](CHANGELOG.md) unter `[Unreleased]` eingetragen (Keep a Changelog).
+- Datenbankänderungen nur additiv über `src/bkoab/migrations.py`; der Test mit
+  `tests/fixtures/legacy_v0_1_master_backup.zip` stellt sicher, dass alte Datensicherungen importierbar bleiben.
 
 ### Projektstruktur (kurz)
 

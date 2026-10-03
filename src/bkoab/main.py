@@ -13,14 +13,15 @@ from bkoab.api.data_export import router as data_export_router
 from bkoab.api.leases import router as leases_router
 from bkoab.api.properties import router as properties_router
 from bkoab.config import BASE_DIR
-from bkoab.database import SessionLocal, init_db
+from bkoab import database
 from bkoab.models import LandlordProfile
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
-    db = SessionLocal()
+    database.init_db()
+    # Look up via the module: a data import swaps engine/SessionLocal at runtime.
+    db = database.SessionLocal()
     try:
         if not db.query(LandlordProfile).first():
             db.add(

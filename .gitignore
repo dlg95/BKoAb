@@ -16,6 +16,8 @@ data/bkoab.db
 data/exports/
 data/letterheads/
 data/invoices/
+# Automatic safety copies created by „Daten importieren“ (dev mode: next to data/)
+BKoAb-backup-before-import-*/
 
 node_modules/
 frontend/dist/

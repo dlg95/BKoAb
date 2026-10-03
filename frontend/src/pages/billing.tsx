@@ -1,21 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Loader2 } from "lucide-react"
+import { FolderOpen, Loader2, ReceiptText } from "lucide-react"
 import { useParams } from "react-router-dom"
 import { useState } from "react"
 
 import { BillingYearsCard } from "@/components/billing-years-card"
+import { Callout } from "@/components/callout"
+import { EmptyState } from "@/components/empty-state"
 import { LinkButton } from "@/components/link-button"
+import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { api, DEFAULT_ALLOCATION_KEY, formatEur, MONTHS } from "@/lib/api"
+import { api, DEFAULT_ALLOCATION_KEY, errorMessage, formatDate, formatEur, MONTHS } from "@/lib/api"
 import { ALLOCATION_ITEMS, ALLOCATION_KEYS } from "@/lib/billing-labels"
 import { pickExportDirectory, saveDocxBlob, savePdfBlob } from "@/lib/download"
 import { abbreviateTenantName } from "@/lib/utils"
@@ -41,6 +43,28 @@ const INVOICE_TYPE_ITEMS = Object.fromEntries(
   INVOICE_TYPES.map((type) => [type.value, type.label]),
 )
 
+const ALLOCATION_SHORT: Record<string, string> = {
+  personenmonate: "PM",
+  flaeche_qm: "m²",
+  wohneinheiten: "Einheiten",
+  direktzuordnung: "direkt",
+  mea: "MEA",
+}
+
+function formatShareBasis(line: { allocation_key: string; party_numerator: string; party_denominator: string }) {
+  const num = parseFloat(line.party_numerator)
+  const den = parseFloat(line.party_denominator)
+  if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return "—"
+  const fmt = (n: number) => n.toLocaleString("de-DE", { maximumFractionDigits: 2 })
+  return `${fmt(num)} / ${fmt(den)}`
+}
+
+/** Remount per apartment/year so drafts never leak from one billing year into another. */
+export function BillingRoute() {
+  const { id, year } = useParams()
+  return <BillingPage key={`${id}-${year}`} />
+}
+
 function defaultInvoiceForm(year: number) {
   return {
     invoice_type: "gas",
@@ -54,7 +78,7 @@ function defaultInvoiceForm(year: number) {
   }
 }
 
-export function BillingPage() {
+function BillingPage() {
   const { id, year } = useParams()
   const apartmentId = Number(id)
   const billingYear = Number(year)
@@ -91,16 +115,24 @@ export function BillingPage() {
     queryFn: () => api.advancePayments(apartmentId, billingYear),
     enabled: !!apartmentId && !!billingYear && !!billingYearInfo,
   })
-  const { data: preview, refetch: refetchPreview } = useQuery({
+  const [tab, setTab] = useState("rechnungen")
+  const {
+    data: preview,
+    refetch: refetchPreview,
+    isFetching: previewLoading,
+    error: previewError,
+  } = useQuery({
     queryKey: ["preview", apartmentId, billingYear],
     queryFn: () => api.preview(apartmentId, billingYear),
-    enabled: false,
+    enabled: tab === "vorschau" && !!billingYearInfo,
   })
 
   const [invoiceForm, setInvoiceForm] = useState(defaultInvoiceForm(billingYear))
   const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null)
   const [pendingPdf, setPendingPdf] = useState<File | null>(null)
   const [advanceDraft, setAdvanceDraft] = useState<Record<string, string>>({})
+  const [uniformAmount, setUniformAmount] = useState("")
+  const [advanceSaved, setAdvanceSaved] = useState(false)
   const [exportDirHandle, setExportDirHandle] = useState<FileSystemDirectoryHandle | null>(null)
   const [exportDirName, setExportDirName] = useState<string | null>(null)
   const [exportingLeaseId, setExportingLeaseId] = useState<number | null>(null)
@@ -123,6 +155,7 @@ export function BillingPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices", apartmentId, billingYear] })
+      queryClient.invalidateQueries({ queryKey: ["preview", apartmentId, billingYear] })
       setInvoiceForm(defaultInvoiceForm(billingYear))
       setPendingPdf(null)
     },
@@ -141,6 +174,7 @@ export function BillingPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices", apartmentId, billingYear] })
+      queryClient.invalidateQueries({ queryKey: ["preview", apartmentId, billingYear] })
       setEditingInvoiceId(null)
       setInvoiceForm(defaultInvoiceForm(billingYear))
       setPendingPdf(null)
@@ -151,6 +185,7 @@ export function BillingPage() {
     mutationFn: (invoiceId: number) => api.deleteInvoice(invoiceId),
     onSuccess: (_, invoiceId) => {
       queryClient.invalidateQueries({ queryKey: ["invoices", apartmentId, billingYear] })
+      queryClient.invalidateQueries({ queryKey: ["preview", apartmentId, billingYear] })
       if (editingInvoiceId === invoiceId) {
         setEditingInvoiceId(null)
         setInvoiceForm(defaultInvoiceForm(billingYear))
@@ -192,7 +227,12 @@ export function BillingPage() {
         })
       return api.updateAdvancePayments(apartmentId, billingYear, payments)
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["advance", apartmentId, billingYear] }),
+    onSuccess: () => {
+      setAdvanceDraft({})
+      setAdvanceSaved(true)
+      queryClient.invalidateQueries({ queryKey: ["advance", apartmentId, billingYear] })
+      queryClient.invalidateQueries({ queryKey: ["preview", apartmentId, billingYear] })
+    },
   })
 
   async function chooseExportDirectory() {
@@ -247,6 +287,7 @@ export function BillingPage() {
       }
     })
     setAdvanceDraft(draft)
+    setAdvanceSaved(false)
   }
 
   function isOccupiedMonth(row: { occupied_months: number[] }, month: number) {
@@ -255,39 +296,40 @@ export function BillingPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Abrechnung {billingYear}</h1>
-          <p className="text-muted-foreground">{apartment?.name}</p>
-        </div>
-        <LinkButton variant="outline" to={`/wohnungen/${apartmentId}`}>
-          Zur WG-Wohnung
-        </LinkButton>
-      </div>
-
-      {billingYears && billingYears.length > 1 && (
-        <div className="flex flex-wrap gap-2">
-          {billingYears.map((by) => (
-            <LinkButton
-              key={by.id}
-              variant={by.year === billingYear ? "default" : "outline"}
-              size="sm"
-              to={`/wohnungen/${apartmentId}/abrechnung/${by.year}`}
-            >
-              {by.year}
-            </LinkButton>
-          ))}
-        </div>
-      )}
+      <PageHeader
+        breadcrumbs={[
+          { label: "WG-Wohnungen", to: "/wohnungen" },
+          { label: apartment?.name ?? "…", to: `/wohnungen/${apartmentId}` },
+          { label: `Abrechnung ${billingYear}` },
+        ]}
+        title={`Abrechnung ${billingYear}`}
+        description={`${apartment?.name ?? ""} · Abrechnungszeitraum 01.01.${billingYear} – 31.12.${billingYear}`}
+        actions={
+          billingYears && billingYears.length > 1 ? (
+            <div className="flex flex-wrap gap-1 rounded-full bg-muted p-1">
+              {billingYears.map((by) => (
+                <LinkButton
+                  key={by.id}
+                  variant={by.year === billingYear ? "default" : "ghost"}
+                  size="sm"
+                  to={`/wohnungen/${apartmentId}/abrechnung/${by.year}`}
+                >
+                  {by.year}
+                </LinkButton>
+              ))}
+            </div>
+          ) : null
+        }
+      />
 
       {billingYearMissing ? (
         <BillingYearsCard apartmentId={apartmentId} unitName={apartment?.name} />
       ) : (
-      <Tabs defaultValue="rechnungen">
-        <TabsList>
-          <TabsTrigger value="rechnungen">Rechnungen</TabsTrigger>
-          <TabsTrigger value="vorauszahlungen">Vorauszahlungen</TabsTrigger>
-          <TabsTrigger value="vorschau">Vorschau & Export</TabsTrigger>
+      <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
+        <TabsList className="max-w-full justify-start overflow-x-auto">
+          <TabsTrigger value="rechnungen">1 · Rechnungen</TabsTrigger>
+          <TabsTrigger value="vorauszahlungen">2 · Vorauszahlungen</TabsTrigger>
+          <TabsTrigger value="vorschau">3 · Vorschau & Export</TabsTrigger>
         </TabsList>
 
         <TabsContent value="rechnungen" className="space-y-4">
@@ -418,6 +460,11 @@ export function BillingPage() {
                   </p>
                 ) : null}
               </div>
+              {(createInvoice.isError || updateInvoice.isError) && (
+                <Callout variant="error" className="md:col-span-3">
+                  {errorMessage(createInvoice.error ?? updateInvoice.error, "Rechnung konnte nicht gespeichert werden.")}
+                </Callout>
+              )}
               <div className="flex flex-wrap gap-2 md:col-span-3">
                 {editingInvoiceId ? (
                   <>
@@ -443,8 +490,15 @@ export function BillingPage() {
             </CardContent>
           </Card>
 
+          {invoices && invoices.length === 0 ? (
+            <EmptyState
+              icon={ReceiptText}
+              title="Noch keine Rechnungen erfasst"
+              description="Erfassen Sie oben alle Kosten des Jahres (z. B. Gas, Strom, Grundsteuer). Rechnungszeiträume, die vom Kalenderjahr abweichen, werden automatisch anteilig berechnet."
+            />
+          ) : (
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="overflow-x-auto pt-6">
               <Table className="min-w-max table-auto">
                 <TableHeader>
                   <TableRow>
@@ -473,7 +527,7 @@ export function BillingPage() {
                           <a className="text-sm underline" href={api.downloadInvoiceDocument(inv.id)} target="_blank" rel="noreferrer">PDF</a>
                         ) : "—"}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{inv.period_start} – {inv.period_end}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDate(inv.period_start)} – {formatDate(inv.period_end)}</TableCell>
                       <TableCell className="sticky right-0 z-10 min-w-[11rem] space-x-1 border-l bg-card group-hover:bg-muted/50">
                         <Button variant="outline" size="sm" onClick={() => startEditInvoice(inv)}>
                           Bearbeiten
@@ -493,10 +547,21 @@ export function BillingPage() {
                       </TableCell>
                     </TableRow>
                   ))}
+                  {invoices && invoices.length > 1 ? (
+                    <TableRow className="font-medium">
+                      <TableCell colSpan={3}>Summe</TableCell>
+                      <TableCell>{formatEur(invoices.reduce((sum, inv) => sum + parseFloat(inv.amount), 0))}</TableCell>
+                      <TableCell>
+                        {formatEur(invoices.reduce((sum, inv) => sum + parseFloat(inv.prorated_amount ?? "0"), 0))}
+                      </TableCell>
+                      <TableCell colSpan={3} />
+                    </TableRow>
+                  ) : null}
                 </TableBody>
               </Table>
             </CardContent>
           </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="vorauszahlungen" className="space-y-4">
@@ -506,16 +571,39 @@ export function BillingPage() {
               <CardDescription>Manuelle Eingabe vor der Abrechnungserstellung</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Input className="max-w-xs" placeholder="Betrag für alle Monate" id="uniform-amount" />
-                <Button variant="secondary" onClick={() => {
-                  const el = document.getElementById("uniform-amount") as HTMLInputElement
-                  fillUniform(el?.value || "0")
-                }}>
-                  Gleicher Betrag für alle Monate
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  className="max-w-48"
+                  type="number"
+                  step="0.01"
+                  placeholder="Monatsbetrag (€)"
+                  value={uniformAmount}
+                  onChange={(e) => setUniformAmount(e.target.value)}
+                />
+                <Button variant="secondary" onClick={() => fillUniform(uniformAmount || "0")}>
+                  Für alle bewohnten Monate übernehmen
                 </Button>
-                <Button onClick={() => saveAdvance.mutate()} disabled={saveAdvance.isPending}>Speichern</Button>
+                <Button
+                  onClick={() => saveAdvance.mutate()}
+                  disabled={saveAdvance.isPending || Object.keys(advanceDraft).length === 0}
+                >
+                  Speichern
+                </Button>
+                {Object.keys(advanceDraft).length > 0 ? (
+                  <span className="text-sm text-amber-700 dark:text-amber-300">Ungespeicherte Änderungen</span>
+                ) : advanceSaved ? (
+                  <span className="text-sm text-muted-foreground">Gespeichert.</span>
+                ) : null}
+                {saveAdvance.isError ? (
+                  <span className="text-sm text-destructive">{errorMessage(saveAdvance.error)}</span>
+                ) : null}
               </div>
+              {advanceRows && advanceRows.length === 0 ? (
+                <Callout variant="warning">
+                  Keine Mietpartei wohnt im Jahr {billingYear} in dieser WG. Mietparteien legen Sie
+                  auf der Seite der WG-Wohnung an.
+                </Callout>
+              ) : null}
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -545,7 +633,10 @@ export function BillingPage() {
                                 type="number"
                                 step="0.01"
                                 value={getAdvanceValue(row.lease_id, month)}
-                                onChange={(e) => setAdvanceDraft({ ...advanceDraft, [`${row.lease_id}-${month}`]: e.target.value })}
+                                onChange={(e) => {
+                                  setAdvanceSaved(false)
+                                  setAdvanceDraft({ ...advanceDraft, [`${row.lease_id}-${month}`]: e.target.value })
+                                }}
                               />
                             ) : (
                               <span className="flex h-9 w-20 items-center justify-center text-muted-foreground">—</span>
@@ -563,8 +654,12 @@ export function BillingPage() {
 
         <TabsContent value="vorschau" className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={() => refetchPreview()}>Vorschau berechnen</Button>
+            <Button onClick={() => refetchPreview()} disabled={previewLoading}>
+              {previewLoading ? <Loader2 className="size-4 animate-spin" /> : null}
+              Neu berechnen
+            </Button>
             <Button variant="outline" onClick={() => chooseExportDirectory()}>
+              <FolderOpen className="size-4" />
               Zielordner wählen
             </Button>
             {exportDirName ? (
@@ -585,12 +680,20 @@ export function BillingPage() {
             </Card>
           ) : null}
 
+          {previewError ? (
+            <Callout variant="error">{errorMessage(previewError, "Vorschau konnte nicht berechnet werden.")}</Callout>
+          ) : null}
+
           {preview?.warnings?.length ? (
-            <Card>
-              <CardContent className="pt-6 text-sm text-amber-700">
-                {preview.warnings.map((w) => <p key={w}>{w}</p>)}
-              </CardContent>
-            </Card>
+            <Callout variant="warning" title="Bitte prüfen">
+              {preview.warnings.map((w) => <p key={w}>{w}</p>)}
+            </Callout>
+          ) : null}
+
+          {preview && preview.parties.length === 0 ? (
+            <Callout variant="warning">
+              Keine Mietpartei im Jahr {billingYear}. Ohne Mietparteien kann keine Abrechnung erstellt werden.
+            </Callout>
           ) : null}
 
           {preview?.parties.map((party) => (
@@ -634,7 +737,9 @@ export function BillingPage() {
                     </Badge>
                   </div>
                 </div>
-                <CardDescription>Personenmonate: {parseFloat(party.head_months).toFixed(2)}</CardDescription>
+                <CardDescription>
+                  Personenmonate: {parseFloat(party.head_months).toLocaleString("de-DE", { maximumFractionDigits: 2 })}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -642,28 +747,36 @@ export function BillingPage() {
                     <TableRow>
                       <TableHead>Kostenart</TableHead>
                       <TableHead>Quote</TableHead>
-                      <TableHead>Gesamt (Objekt)</TableHead>
-                      <TableHead>Ihr Anteil</TableHead>
+                      <TableHead>Anteil (Basis)</TableHead>
+                      <TableHead className="text-right">Gesamt (WG)</TableHead>
+                      <TableHead className="text-right">Ihr Anteil</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {party.cost_lines.map((line) => (
                       <TableRow key={line.invoice_id}>
                         <TableCell>{line.label}</TableCell>
-                        <TableCell>{line.allocation_key === "personenmonate" ? "PM" : "m²"}</TableCell>
-                        <TableCell>{formatEur(line.total_prorated)}</TableCell>
-                        <TableCell>{formatEur(line.party_share)}</TableCell>
+                        <TableCell>{ALLOCATION_SHORT[line.allocation_key] ?? line.allocation_key}</TableCell>
+                        <TableCell className="text-muted-foreground tabular-nums">{formatShareBasis(line)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatEur(line.total_prorated)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatEur(line.party_share)}</TableCell>
                       </TableRow>
                     ))}
-                    <TableRow>
-                      <TableCell className="font-medium">Summe Nebenkosten</TableCell>
-                      <TableCell />
-                      <TableCell className="font-medium">{formatEur(party.total_costs)}</TableCell>
+                    <TableRow className="border-t-2">
+                      <TableCell colSpan={4} className="font-medium">Summe Ihrer Betriebskosten</TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">{formatEur(party.total_costs)}</TableCell>
                     </TableRow>
                     <TableRow>
-                      <TableCell>Abzüglich Vorauszahlungen</TableCell>
-                      <TableCell />
-                      <TableCell>{formatEur(party.total_advance_payments)}</TableCell>
+                      <TableCell colSpan={4}>Abzüglich Ihrer Vorauszahlungen</TableCell>
+                      <TableCell className="text-right tabular-nums">− {formatEur(party.total_advance_payments)}</TableCell>
+                    </TableRow>
+                    <TableRow className="bg-muted/40">
+                      <TableCell colSpan={4} className="font-semibold">
+                        {party.balance_type === "nachzahlung" ? "Nachzahlung" : party.balance_type === "guthaben" ? "Guthaben" : "Ausgeglichen"}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums">
+                        {formatEur(Math.abs(parseFloat(party.balance)))}
+                      </TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>
@@ -673,8 +786,8 @@ export function BillingPage() {
 
           {preview && (
             <p className="text-sm text-muted-foreground">
-              Personenmonate gesamt: {parseFloat(preview.total_head_months).toFixed(2)} ·
-              Leerstand Vermieter: {parseFloat(preview.landlord_vacancy_head_months).toFixed(2)}
+              Personenmonate gesamt: {parseFloat(preview.total_head_months).toLocaleString("de-DE", { maximumFractionDigits: 2 })} ·
+              Leerstand Vermieter: {parseFloat(preview.landlord_vacancy_head_months).toLocaleString("de-DE", { maximumFractionDigits: 2 })}
               {preview.unit_area_sqm && preview.total_property_area_sqm ? (
                 <> · Wohnfläche: {parseFloat(preview.unit_area_sqm).toFixed(2)} / {parseFloat(preview.total_property_area_sqm).toFixed(2)} m²</>
               ) : null}
@@ -683,7 +796,6 @@ export function BillingPage() {
         </TabsContent>
       </Tabs>
       )}
-      <Separator />
     </div>
   )
 }

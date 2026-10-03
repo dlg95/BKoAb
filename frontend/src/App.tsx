@@ -4,7 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
 import { Layout } from "@/components/layout"
 import { ApartmentDetailPage } from "@/pages/apartment-detail"
 import { ApartmentsPage } from "@/pages/apartments"
-import { BillingPage } from "@/pages/billing"
+import { BillingRoute } from "@/pages/billing"
 import { DashboardPage } from "@/pages/dashboard"
 import { LeasesPage } from "@/pages/leases"
 import { LegalPage } from "@/pages/legal"
@@ -22,7 +22,7 @@ export function App() {
             <Route path="wohnungen" element={<ApartmentsPage />} />
             <Route path="wohnungen/:id" element={<ApartmentDetailPage />} />
             <Route path="wohnungen/:id/mietparteien" element={<LeasesPage />} />
-            <Route path="wohnungen/:id/abrechnung/:year" element={<BillingPage />} />
+            <Route path="wohnungen/:id/abrechnung/:year" element={<BillingRoute />} />
             <Route path="einstellungen" element={<SettingsPage />} />
             <Route path="rechtliches" element={<LegalPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

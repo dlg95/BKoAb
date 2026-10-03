@@ -20,6 +20,41 @@ def ensure_default_person_periods(lease: Lease, db) -> list[LeasePersonPeriod]:
     return lease.person_periods
 
 
+def sync_person_periods_to_lease(lease: Lease, db) -> None:
+    """Keep person periods consistent after move-in/move-out changes.
+
+    Periods entirely outside the lease are dropped, the first period starts at move-in
+    and the last one ends at move-out (or stays open). Gaps between periods stay as they are.
+    """
+    periods = sorted(lease.person_periods, key=lambda p: p.valid_from)
+    kept: list[LeasePersonPeriod] = []
+    for period in periods:
+        if lease.move_out and period.valid_from > lease.move_out:
+            db.delete(period)
+            continue
+        if period.valid_to is not None and period.valid_to < lease.move_in:
+            db.delete(period)
+            continue
+        kept.append(period)
+
+    if not kept:
+        persons = periods[-1].persons if periods else lease.persons
+        period = LeasePersonPeriod(
+            lease_id=lease.id,
+            valid_from=lease.move_in,
+            valid_to=lease.move_out,
+            persons=persons,
+        )
+        db.add(period)
+        return
+
+    kept[0].valid_from = lease.move_in
+    for index, period in enumerate(kept[:-1]):
+        if period.valid_to is None:
+            period.valid_to = kept[index + 1].valid_from - timedelta(days=1)
+    kept[-1].valid_to = lease.move_out
+
+
 def validate_person_periods(lease: Lease, periods: list[PersonPeriodCreate]) -> None:
     if not periods:
         raise ValueError("Mindestens ein Personenzahl-Zeitraum erforderlich")

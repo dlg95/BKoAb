@@ -119,7 +119,8 @@ def _migrate_invoices_nullable_billing_year(conn, engine: Engine) -> None:
                 note TEXT NOT NULL DEFAULT '',
                 allocation_key VARCHAR(20) NOT NULL DEFAULT 'personenmonate',
                 allocation_scope VARCHAR(20) NOT NULL DEFAULT 'unit',
-                has_document BOOLEAN NOT NULL DEFAULT 0
+                has_document BOOLEAN NOT NULL DEFAULT 0,
+                target_lease_ids_json TEXT
             )
             """
         )
@@ -129,11 +130,13 @@ def _migrate_invoices_nullable_billing_year(conn, engine: Engine) -> None:
             """
             INSERT INTO invoices__new (
                 id, billing_year_id, property_billing_year_id, invoice_type, label, amount,
-                period_start, period_end, note, allocation_key, allocation_scope, has_document
+                period_start, period_end, note, allocation_key, allocation_scope, has_document,
+                target_lease_ids_json
             )
             SELECT
                 id, billing_year_id, property_billing_year_id, invoice_type, label, amount,
-                period_start, period_end, note, allocation_key, allocation_scope, has_document
+                period_start, period_end, note, allocation_key, allocation_scope, has_document,
+                target_lease_ids_json
             FROM invoices
             """
         )

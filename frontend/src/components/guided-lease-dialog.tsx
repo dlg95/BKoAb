@@ -16,8 +16,10 @@ type GuidedLeaseDialogProps = {
   /** e.g. Zimmer / Wohnung */
   subUnitLabel: string
   subUnitName: string
-  /** Absolute path to Mietparteien page, optionally with ?room= */
-  leasesPath: string
+  /** Absolute path to navigate to on confirm (legacy). */
+  leasesPath?: string
+  /** Called on confirm instead of navigating, e.g. to open the lease dialog in place. */
+  onConfirm?: () => void
 }
 
 /** Soft prompt after creating a subunit — not mandatory. */
@@ -27,6 +29,7 @@ export function GuidedLeaseDialog({
   subUnitLabel,
   subUnitName,
   leasesPath,
+  onConfirm,
 }: GuidedLeaseDialogProps) {
   const navigate = useNavigate()
 
@@ -47,7 +50,8 @@ export function GuidedLeaseDialog({
           <Button
             onClick={() => {
               onOpenChange(false)
-              navigate(leasesPath)
+              if (onConfirm) onConfirm()
+              else if (leasesPath) navigate(leasesPath)
             }}
           >
             Mietpartei anlegen

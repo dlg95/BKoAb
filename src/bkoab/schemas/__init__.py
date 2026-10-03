@@ -238,9 +238,21 @@ class LeaseCreate(BaseModel):
 
 
 class LeaseUpdate(BaseModel):
+    """Partial update. Sending `move_out: null` explicitly clears the move-out date."""
+
+    tenant_name: str | None = None
+    tenant_contact: str | None = None
+    room_id: int | None = None
     persons: int | None = None
     move_in: date | None = None
     move_out: date | None = None
+
+    @field_validator("persons")
+    @classmethod
+    def validate_persons(cls, v: int | None) -> int | None:
+        if v is not None and v < 1:
+            raise ValueError("Personenanzahl muss mindestens 1 sein")
+        return v
 
 
 class PersonPeriodCreate(BaseModel):
@@ -273,6 +285,7 @@ class LeaseRead(BaseModel):
     id: int
     tenant_id: int
     tenant_name: str
+    tenant_contact: str = ""
     room_id: int
     room_name: str
     persons: int

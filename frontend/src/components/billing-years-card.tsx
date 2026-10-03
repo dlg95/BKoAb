@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { api } from "@/lib/api"
+import { api, ApiError, errorMessage } from "@/lib/api"
 import { BILLING_LABELS } from "@/lib/billing-labels"
 
 type BillingYearsCardProps = {
@@ -57,7 +57,6 @@ export function BillingYearsCard({ apartmentId, unitName }: BillingYearsCardProp
               <LinkButton
                 key={by.id}
                 variant="outline"
-                size="sm"
                 to={`/wohnungen/${apartmentId}/abrechnung/${by.year}`}
               >
                 {by.year}
@@ -93,10 +92,10 @@ export function BillingYearsCard({ apartmentId, unitName }: BillingYearsCardProp
             Abrechnung anlegen
           </Button>
           {createMutation.isError && (
-            <p className="text-sm text-destructive w-full">
-              {(createMutation.error as Error).message.includes("409")
-                ? "Diese Abrechnung existiert bereits."
-                : "Abrechnung konnte nicht angelegt werden."}
+            <p className="w-full text-sm text-destructive">
+              {createMutation.error instanceof ApiError && createMutation.error.status === 409
+                ? "Diese Abrechnung existiert bereits — öffnen Sie sie über die Jahresliste oben."
+                : errorMessage(createMutation.error, "Abrechnung konnte nicht angelegt werden.")}
             </p>
           )}
         </div>

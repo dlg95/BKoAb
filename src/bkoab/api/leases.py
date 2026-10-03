@@ -10,7 +10,11 @@ from bkoab.schemas import (
     PersonPeriodBulkUpdate,
     PersonPeriodRead,
 )
-from bkoab.services.person_periods import ensure_default_person_periods, validate_person_periods
+from bkoab.services.person_periods import (
+    ensure_default_person_periods,
+    sync_person_periods_to_lease,
+    validate_person_periods,
+)
 
 router = APIRouter(prefix="/api", tags=["leases"])
 
@@ -20,6 +24,7 @@ def _lease_to_read(lease: Lease) -> LeaseRead:
         id=lease.id,
         tenant_id=lease.tenant.id,
         tenant_name=lease.tenant.name,
+        tenant_contact=lease.tenant.contact or "",
         room_id=lease.room_id,
         room_name=lease.room.name,
         persons=lease.persons,
@@ -37,7 +42,13 @@ def _validate_no_overlap(db: Session, room_id: int, move_in, move_out, exclude_i
         existing_end = existing.move_out or __import__("datetime").date.max
         new_end = move_out or __import__("datetime").date.max
         if move_in <= existing_end and existing.move_in <= new_end:
-            raise HTTPException(400, f"Überlappung mit Mietvertrag {existing.id}")
+            period = existing.move_in.strftime("%d.%m.%Y") + (
+                f"–{existing.move_out.strftime('%d.%m.%Y')}" if existing.move_out else " (unbefristet)"
+            )
+            raise HTTPException(
+                400,
+                f"Zeitraum überschneidet sich mit Mietpartei „{existing.tenant.name}“ ({period}) in diesem Zimmer",
+            )
 
 
 @router.get("/apartments/{apartment_id}/leases", response_model=list[LeaseRead])
@@ -64,6 +75,8 @@ def create_lease(apartment_id: int, payload: LeaseCreate, db: Session = Depends(
     room = db.get(Room, payload.room_id)
     if not room or room.apartment_id != apartment_id:
         raise HTTPException(404, "Zimmer nicht gefunden")
+    if payload.move_out is not None and payload.move_out < payload.move_in:
+        raise HTTPException(400, "Auszug liegt vor dem Einzug")
 
     _validate_no_overlap(db, payload.room_id, payload.move_in, payload.move_out)
 
@@ -124,14 +137,52 @@ def update_lease(lease_id: int, payload: LeaseUpdate, db: Session = Depends(get_
     if not lease:
         raise HTTPException(404, "Mietvertrag nicht gefunden")
 
+    fields = payload.model_fields_set
+    room_id = payload.room_id if payload.room_id is not None else lease.room_id
     move_in = payload.move_in or lease.move_in
-    move_out = payload.move_out if payload.move_out is not None else lease.move_out
-    _validate_no_overlap(db, lease.room_id, move_in, move_out, exclude_id=lease_id)
+    move_out = payload.move_out if "move_out" in fields else lease.move_out
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(lease, field, value)
+    if move_out is not None and move_out < move_in:
+        raise HTTPException(400, "Auszug liegt vor dem Einzug")
+
+    if room_id != lease.room_id:
+        new_room = db.get(Room, room_id)
+        if not new_room or new_room.apartment_id != lease.room.apartment_id:
+            raise HTTPException(404, "Zimmer nicht gefunden")
+
+    _validate_no_overlap(db, room_id, move_in, move_out, exclude_id=lease_id)
+
+    if "tenant_name" in fields:
+        name = (payload.tenant_name or "").strip()
+        if not name:
+            raise HTTPException(400, "Mietername erforderlich")
+        lease.tenant.name = name
+    if "tenant_contact" in fields:
+        lease.tenant.contact = payload.tenant_contact or ""
+
+    dates_changed = move_in != lease.move_in or move_out != lease.move_out
+    lease.room_id = room_id
+    lease.move_in = move_in
+    lease.move_out = move_out
+    if payload.persons is not None:
+        lease.persons = payload.persons
+        if len(lease.person_periods) == 1:
+            lease.person_periods[0].persons = payload.persons
+    if dates_changed:
+        sync_person_periods_to_lease(lease, db)
+
     db.commit()
-    db.refresh(lease)
+    db.expire_all()
+    lease = (
+        db.query(Lease)
+        .options(
+            joinedload(Lease.tenant),
+            joinedload(Lease.room),
+            joinedload(Lease.person_periods),
+        )
+        .filter(Lease.id == lease_id)
+        .one()
+    )
     return _lease_to_read(lease)
 
 
