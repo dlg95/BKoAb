@@ -54,7 +54,7 @@ bzw. in der App unter `/rechtliches`. LibreOffice-Lizenzen:
 | **PDF** | **dxpdf** + `pypdf` | Ja — Python-Paket (~13 MB); kein LibreOffice nötig |
 | PDF (optional) | LibreOffice `soffice` | Fallback, falls installiert (`BKOAB_PDF_ENGINE=libreoffice`) |
 
-- **Lokal / Docker / macOS-App:** PDF über dxpdf — keine separate Installation.
+- **Lokal / macOS-App:** PDF über dxpdf — keine separate Installation.
 - **Optional LibreOffice bündeln:** `BKOAB_BUNDLE_LIBREOFFICE=1 ./build_app.sh`
 - Engine erzwingen: `BKOAB_PDF_ENGINE=dxpdf|libreoffice|auto`
 
@@ -81,45 +81,24 @@ Die Navigation oben führt Sie zu **Dashboard**, **WG-Wohnungen**, **Einstellung
 
 ---
 
-## Deployment auf Cloudflare
+## Verteilung (macOS)
 
-BKoAb läuft auf Cloudflare als **Container** hinter einem Worker (FastAPI + gebautes Frontend in einem Image).
-
-### Voraussetzungen
-
-1. [Docker Desktop](https://www.docker.com/products/docker-desktop/) installiert und gestartet (`docker info` muss funktionieren)
-2. Cloudflare-Account mit **Workers Paid** (Containers sind Paid-only)
-3. Eingeloggt: `npx wrangler login`
-
-### Deploy
-
-Lokal (Docker Desktop muss laufen):
+BKoAb ist eine **lokale** Anwendung. Distribution an andere Macs erfolgt über eine
+**signierte und notarisierte DMG** (kein Cloudflare-/Cloud-Hosting geplant).
 
 ```bash
-npm install
-npx wrangler deploy
+./build_app.sh
+# Ergebnis: dist/BKoAb.dmg  (Developer-ID-signiert + notarisiert, sofern Keychain-Identity vorhanden)
 ```
 
-Oder per GitHub Actions: Repository-Secrets setzen
+Empfänger: DMG öffnen → App auf „Programme“ ziehen → starten. Daten liegen unter
+`~/Library/Application Support/BKoAb/`. Details: [ONBOARDING.txt](ONBOARDING.txt).
 
-- `CLOUDFLARE_API_TOKEN` — Token mit Workers/Containers-Rechten ([API Tokens](https://dash.cloudflare.com/profile/api-tokens), Vorlage „Edit Cloudflare Workers“)
-- `CLOUDFLARE_ACCOUNT_ID` — `a017360ea169384c3e8bec55659d5a23`
-
-Dann Workflow **Deploy to Cloudflare** manuell starten oder nach Push auf `main`.
-
-Nach dem ersten Deploy kann die Bereitstellung des Containers einige Minuten dauern. Status prüfen:
+Optionaler LibreOffice-Fallback im Bundle (~420 MB extra):
 
 ```bash
-npx wrangler containers list
+BKOAB_BUNDLE_LIBREOFFICE=1 ./build_app.sh
 ```
-
-Die App ist dann unter `https://bkoab.<dein-subdomain>.workers.dev` erreichbar.
-
-### Hinweise
-
-- **Persistenz:** Der Container-Disk ist derzeit ephemer — bei längerem Idle (`sleepAfter`) können SQLite-Daten und Belege zurückgesetzt werden. Für produktiven Dauerbetrieb folgt später R2/D1.
-- **PDF-Export:** über dxpdf im Python-Image (kein LibreOffice nötig).
-- Lokal weiter mit `./run.sh` entwickeln.
 
 ---
 
@@ -352,12 +331,6 @@ Das Datenverzeichnis lässt sich mit `BKOAB_DATA_DIR=/pfad ./run.sh` festlegen.
 
 Siehe [ROADMAP.md](ROADMAP.md) — u. a. erweiterte Kostenarten, WEG-Logik, Belegimport per Foto/KI.
 
-### macOS-App bauen
+### Signierte DMG bauen
 
-```bash
-./build_app.sh
-# Optionaler LibreOffice-Fallback im Bundle (~420 MB extra):
-#   BKOAB_BUNDLE_LIBREOFFICE=1 ./build_app.sh
-```
-
-Ergebnis: schlanke `dist/BKoAb.dmg` mit dxpdf für den PDF-Export (ohne LibreOffice).
+Siehe Abschnitt [Verteilung (macOS)](#verteilung-macos): `./build_app.sh` → `dist/BKoAb.dmg`.

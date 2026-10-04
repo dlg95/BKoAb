@@ -1,7 +1,4 @@
 node_modules/
-.wrangler/
-.dev.vars
-worker/node_modules/
 
 .venv/
 __pycache__/

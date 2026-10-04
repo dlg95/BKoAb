@@ -17,6 +17,11 @@ die Versionierung folgt [Semantic Versioning 2.0.0](https://semver.org/lang/de/)
 
 ## [Unreleased]
 
+### Changed
+
+- Verteilung klar auf **lokale Nutzung** und **signierte macOS-DMGs** ausgerichtet;
+  Cloudflare-Deploy (Worker/Container, Wrangler, GitHub-Actions-Workflow) entfernt.
+
 ### Added
 
 - **Soll-Vorauszahlung je Mietpartei** („Vorauszahlung“ an der Mietpartei bzw. beim Anlegen):

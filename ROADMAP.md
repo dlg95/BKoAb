@@ -20,7 +20,7 @@ Diese Regeln gelten für jede Änderung:
    Schema, steigt `EXPORT_FORMAT_VERSION`; ältere Formate werden weiter gelesen.
 2. **Ergebnisse nachvollziehbar.** Jede Zahl in der Abrechnung lässt sich aus Vorschau bzw. DOCX
    herleiten (Basis, Nenner, Zeitraum).
-3. **Lokal & privat.** Kein Tracking, keine Cloud-Pflicht; Hosting bleibt optional.
+3. **Lokal & privat.** Kein Tracking, keine Cloud-Pflicht; Verteilung über signierte macOS-DMG.
 4. **Jede Änderung im CHANGELOG** unter `[Unreleased]`.
 
 ---
@@ -73,14 +73,14 @@ Diese Regeln gelten für jede Änderung:
 - Miteigentumsanteile (MEA) und WEG-Jahresabrechnung (Hausgeld, Rücklage, umlagefähig / nicht
   umlagefähig).
 
-### Hosting (optional)
+### Distribution
 
-- Konten (Google/Apple-Login), strikte Mandantentrennung, EU-Hosting, DSGVO (Datenschutzerklärung,
-  Consent, Export = vorhandener ZIP-Export, Konto löschen).
-- Heute existiert ein Cloudflare-Container-Deployment, dessen Speicher aber **flüchtig** ist
-  (siehe README).
-- Finanzierung, falls gehostet: Werbung nur außerhalb von Formularen und Exporten, nur nach
-  Einwilligung (Consent Mode v2).
+- **Heute & absehbar:** lokal (`./run.sh`) bzw. **signierte/notarisierte macOS-DMG**
+  (`./build_app.sh` → `dist/BKoAb.dmg`) zum Teilen.
+- Cloud-/SaaS-Hosting (Accounts, Mandanten, Cloudflare usw.) ist **zurückgestellt** — kein
+  aktives Deployment mehr.
+- Später denkbar, falls Bedarf: Konten (Google/Apple), Mandantentrennung, EU-Hosting, DSGVO;
+  Finanzierung ggf. Werbung nur außerhalb von Formularen/Exporten und nur nach Einwilligung.
 
 ### Kleinigkeiten
 
